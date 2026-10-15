@@ -1,0 +1,15 @@
+---
+import Checkout from '../components/tienda/Checkout.tsx';
+import CheckoutLayout from '../layouts/Checkout.astro';
+import { datosDeLaTienda } from '../lib/tienda';
+
+export const prerender = false;
+
+const { tienda } = await datosDeLaTienda(Astro.request);
+// A la isla solo le pasamos lo que usa: no hace falta mandar al navegador los textos de la tienda.
+const { descuentoTransferenciaPorcentaje, cuotasSinInteres, retiro, reservaMercadoPagoMinutos, reservaTransferenciaHoras, maxUnidadesPorPedido } = tienda;
+---
+
+<CheckoutLayout titulo="Finalizar compra">
+	<Checkout client:only="preact" tienda={{ descuentoTransferenciaPorcentaje, cuotasSinInteres, retiro, reservaMercadoPagoMinutos, reservaTransferenciaHoras, maxUnidadesPorPedido }} />
+</CheckoutLayout>

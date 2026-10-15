@@ -1,0 +1,75 @@
+---
+// Carrusel de banners de la portada. Se desliza con el dedo (scroll-snap), avanza solo cada 5 segundos y se
+// pausa al tocarlo, al pasar el mouse o al enfocarlo. Con "reducir movimiento" activado en el dispositivo no avanza solo.
+import { ChevronLeft, ChevronRight } from '@lucide/astro';
+import { urlBanner } from '../../lib/formato';
+
+interface Props {
+  banners: { clave: string; claveMovil: string | null; textoAlternativo: string | null; enlace: string | null }[];
+}
+const { banners } = Astro.props;
+// Todas las diapositivas comparten la altura: con una imagen vertical para celular, el carrusel es más alto ahí.
+const proporcion = banners.some((b) => b.claveMovil) ? 'aspect-[9/11] md:aspect-[8/3]' : 'aspect-[16/9] md:aspect-[8/3]';
+---
+
+<section data-carrusel class="relative" aria-roledescription="carrusel" aria-label="Novedades">
+	<div data-pista class:list={['flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', proporcion]} tabindex="0">
+		{banners.map((b, i) => {
+			const imagen = (
+				<picture>
+					{b.claveMovil && <source media="(max-width: 767px)" srcset={urlBanner(b.claveMovil)} />}
+					<img src={urlBanner(b.clave)} alt={b.textoAlternativo ?? ''} class="size-full object-cover" fetchpriority={i === 0 ? 'high' : 'auto'} loading={i === 0 ? 'eager' : 'lazy'} />
+				</picture>
+			);
+			return (
+				<div class="h-full w-full shrink-0 snap-center" role="group" aria-roledescription="diapositiva" aria-label={`${i + 1} de ${banners.length}`}>
+					{b.enlace ? <a href={b.enlace} class="block size-full">{imagen}</a> : imagen}
+				</div>
+			);
+		})}
+	</div>
+
+	{banners.length > 1 && (
+		<>
+			<button type="button" data-anterior class="boton-icono absolute top-1/2 left-3 hidden -translate-y-1/2 bg-white/80 shadow md:inline-flex" title="Anterior" aria-label="Banner anterior"><ChevronLeft class="size-5" aria-hidden="true" /></button>
+			<button type="button" data-siguiente class="boton-icono absolute top-1/2 right-3 hidden -translate-y-1/2 bg-white/80 shadow md:inline-flex" title="Siguiente" aria-label="Banner siguiente"><ChevronRight class="size-5" aria-hidden="true" /></button>
+			<div class="absolute right-0 bottom-3 left-0 flex justify-center gap-2">
+				{banners.map((_, i) => <button type="button" data-punto={i} class="relative size-2.5 rounded-full bg-white/60 ring-1 ring-black/10 before:absolute before:-inset-x-1.5 before:-inset-y-4 before:content-[''] aria-[current=true]:bg-white aria-[current=true]:ring-black/30 aria-[current=true]:ring-2" aria-label={`Ir al banner ${i + 1}`} aria-current={i === 0 ? 'true' : undefined}></button>)}
+			</div>
+		</>
+	)}
+</section>
+
+<script>
+	for (const carrusel of document.querySelectorAll<HTMLElement>('[data-carrusel]')) {
+		const pista = carrusel.querySelector<HTMLElement>('[data-pista]')!;
+		const puntos = [...carrusel.querySelectorAll<HTMLButtonElement>('[data-punto]')];
+		const total = pista.children.length;
+		if (total < 2) continue;
+		const actual = () => Math.round(pista.scrollLeft / pista.clientWidth);
+		const ir = (i: number) => pista.scrollTo({ left: ((i + total) % total) * pista.clientWidth, behavior: 'smooth' });
+
+		pista.addEventListener('scroll', () => {
+			const a = actual();
+			puntos.forEach((p, i) => p.setAttribute('aria-current', String(i === a)));
+		}, { passive: true });
+		puntos.forEach((p, i) => p.addEventListener('click', () => ir(i)));
+		carrusel.querySelector('[data-anterior]')?.addEventListener('click', () => ir(actual() - 1));
+		carrusel.querySelector('[data-siguiente]')?.addEventListener('click', () => ir(actual() + 1));
+		pista.addEventListener('keydown', (e) => {
+			if (e.key === 'ArrowLeft') ir(actual() - 1);
+			if (e.key === 'ArrowRight') ir(actual() + 1);
+		});
+
+		// Avance automático, con pausa mientras se interactúa.
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) continue;
+		let pausado = false;
+		for (const evento of ['mouseenter', 'focusin', 'touchstart']) carrusel.addEventListener(evento, () => (pausado = true), { passive: true });
+		for (const evento of ['mouseleave', 'focusout']) carrusel.addEventListener(evento, () => (pausado = false));
+		// Después de un toque, se reanuda tras unos segundos sin tocar.
+		carrusel.addEventListener('touchend', () => setTimeout(() => (pausado = false), 8000), { passive: true });
+		setInterval(() => {
+			if (!pausado && !document.hidden) ir(actual() + 1);
+		}, 5000);
+	}
+</script>

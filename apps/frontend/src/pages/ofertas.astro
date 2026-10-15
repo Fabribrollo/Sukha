@@ -1,0 +1,17 @@
+---
+import Listado from '../components/tienda/Listado.astro';
+import Tienda from '../layouts/Tienda.astro';
+import { canonica, datosDeLaTienda } from '../lib/tienda';
+import { cargarListado, conCambios, productosNuevos } from '../lib/listado';
+
+export const prerender = false;
+
+const { tienda, filtros } = await datosDeLaTienda(Astro.request);
+const listado = await cargarListado(Astro.request, Astro.url, { oferta: true });
+if (listado.fueraDeRango) return Astro.redirect(conCambios(Astro.url, { pagina: null }));
+const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(Astro.request);
+---
+
+<Tienda titulo="Ofertas" descripcion="Prendas de Sukhä con descuento." canonica={canonica(Astro.url, ['pagina'])} noindex={listado.filtrado}>
+	<Listado titulo="Ofertas" subtitulo="Prendas con precio rebajado" migas={[{ texto: 'Ofertas' }]} {...listado} filtros={filtros} tienda={tienda} mostrarCategorias sugeridos={sugeridos} />
+</Tienda>

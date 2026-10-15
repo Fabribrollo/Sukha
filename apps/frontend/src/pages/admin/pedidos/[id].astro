@@ -1,0 +1,206 @@
+---
+import { Ban, Check, CircleAlert, CircleCheck, Clock, CreditCard, FileText, History, Landmark, Mail, MapPin, PackageCheck, PackageOpen, Phone, Save, Store, Truck, Undo2, User } from '@lucide/astro';
+import Campo from '../../../components/panel/Campo.astro';
+import Estado from '../../../components/panel/Estado.astro';
+import Insignia from '../../../components/panel/Insignia.astro';
+import Interruptor from '../../../components/panel/Interruptor.astro';
+import Tarjeta from '../../../components/panel/Tarjeta.astro';
+import Panel from '../../../layouts/Panel.astro';
+import { api } from '../../../lib/api';
+import { ACCIONES, ENTREGAS, ESTADOS, PAGOS, SIGUIENTES, errorDe, fecha, marcado, pesos, txt } from '../../../lib/panel';
+
+export const prerender = false;
+
+const ruta = `/api/admin/pedidos/${Astro.params.id}`;
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r =
+    f.get('accion') === 'datos'
+      ? await api(Astro.request, ruta, { numeroSeguimiento: txt(f, 'numeroSeguimiento'), facturaNumero: txt(f, 'facturaNumero') }, 'PATCH')
+      : await api(Astro.request, `${ruta}/estado`, {
+          estado: f.get('estado'),
+          nota: txt(f, 'nota'),
+          numeroSeguimiento: txt(f, 'numeroSeguimiento'),
+          devolverStock: marcado(f, 'devolverStock'),
+        });
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  error = await errorDe(r);
+}
+
+const respuesta = await api(Astro.request, ruta);
+if (respuesta.status === 404) return Astro.redirect('/admin/pedidos');
+const p = (await respuesta.json()) as any;
+const conRetiro = p.metodo_entrega === 'retiro';
+// Solo los cambios que tienen sentido para la forma de entrega de este pedido.
+const posibles = (SIGUIENTES[p.estado] ?? []).filter((e) => (e === 'enviado' ? !conRetiro : e === 'listo_para_retirar' ? conRetiro : true));
+// El paso que sigue en el camino normal va como botón principal; cancelar, reembolsar y revisar quedan aparte.
+const excepciones = ['cancelado', 'reembolsado', 'a_revisar'];
+const avances = posibles.filter((e) => !excepciones.includes(e));
+const otros = posibles.filter((e) => excepciones.includes(e));
+const iconoAccion: Record<string, any> = { pagado: Check, en_preparacion: PackageOpen, enviado: Truck, listo_para_retirar: Store, entregado: PackageCheck, cancelado: Ban, reembolsado: Undo2, a_revisar: CircleAlert };
+
+// Camino del pedido, para mostrar por dónde va.
+const camino = ['pendiente_pago', 'pagado', 'en_preparacion', conRetiro ? 'listo_para_retirar' : 'enviado', 'entregado'];
+const iconoPaso: Record<string, any> = { pendiente_pago: Clock, pagado: CircleCheck, en_preparacion: PackageOpen, enviado: Truck, listo_para_retirar: Store, entregado: PackageCheck };
+const posicion = camino.indexOf(p.estado);
+const fueraDeCamino = posicion === -1;
+const Entrega = conRetiro ? Store : p.metodo_entrega === 'sucursal' ? MapPin : Truck;
+const Pago = p.metodo_pago === 'transferencia' ? Landmark : CreditCard;
+const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', rechazado: 'rojo', reembolsado: 'violeta' };
+---
+
+<Panel titulo={p.numero} error={error} volver={{ href: '/admin/pedidos', texto: 'Ventas' }}>
+	<Fragment slot="acciones">
+		<Estado estado={p.estado} />
+		<span class="text-theme-xl font-semibold text-gray-800 tabular-nums">{pesos(p.total_centavos)}</span>
+	</Fragment>
+
+	<Tarjeta>
+		{!fueraDeCamino && (
+			<ol class="mb-6 flex items-start">
+				{camino.map((paso, i) => {
+					const Icono = iconoPaso[paso];
+					const hecho = i < posicion || (i === posicion && paso === 'entregado');
+					const actual = i === posicion && paso !== 'entregado';
+					return (
+						<li class="relative flex flex-1 flex-col items-center gap-1.5 text-center">
+							{i > 0 && <span class:list={['absolute top-5 right-1/2 -z-0 h-0.5 w-full', i <= posicion ? 'bg-success-500' : 'bg-gray-200']} aria-hidden="true"></span>}
+							<span class:list={['relative z-10 flex size-10 items-center justify-center rounded-full', hecho ? 'bg-success-500 text-white' : actual ? 'bg-brand-500 ring-brand-100 text-white ring-4' : 'bg-gray-100 text-gray-400']}>
+								<Icono class="size-5" aria-hidden="true" />
+							</span>
+							<span class:list={['text-theme-xs max-sm:sr-only', actual ? 'font-semibold text-gray-800' : 'text-gray-500']} aria-current={actual ? 'step' : undefined}>{ESTADOS[paso]}</span>
+						</li>
+					);
+				})}
+			</ol>
+		)}
+
+		{p.estado === 'pendiente_pago' && (
+			<p class="text-theme-sm text-warning-700 mb-4 flex items-center gap-2"><Clock class="size-4" aria-hidden="true" />Reserva hasta el {fecha(p.reserva_vence_en)}</p>
+		)}
+
+		<div class="flex flex-wrap items-end gap-3">
+			{avances.map((e) => {
+				const Icono = iconoAccion[e];
+				return (
+					<form method="post" class="flex flex-wrap items-end gap-3">
+						<input type="hidden" name="estado" value={e} />
+						{e === 'enviado' && <Campo etiqueta="Nº de seguimiento" nombre="numeroSeguimiento" valor={p.numero_seguimiento} required class="w-56" />}
+						<button class="btn btn-primario"><Icono class="size-4" aria-hidden="true" />{ACCIONES[e]}</button>
+					</form>
+				);
+			})}
+
+			{otros.length > 0 && (
+				<details class="relative">
+					<summary class="btn btn-secundario">Otras acciones</summary>
+					<div class="shadow-theme-lg absolute left-0 z-10 mt-2 w-72 space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:left-auto sm:right-0">
+						{otros.map((e) => {
+							const Icono = iconoAccion[e];
+							return (
+								<form method="post" class="space-y-3 border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+									<input type="hidden" name="estado" value={e} />
+									{e === 'reembolsado' && p.estado !== 'a_revisar' && <Interruptor etiqueta="Las prendas vuelven al stock" nombre="devolverStock" />}
+									<Campo etiqueta="Nota interna" nombre="nota" maxlength="500" placeholder="Opcional" />
+									<button class:list={['btn w-full', e === 'a_revisar' ? 'btn-secundario' : 'btn-peligro-suave']}><Icono class="size-4" aria-hidden="true" />{ACCIONES[e]}</button>
+									{e === 'reembolsado' && <p class="text-theme-xs text-gray-500">Solo lo registra. La plata se devuelve desde Mercado Pago o por transferencia.</p>}
+								</form>
+							);
+						})}
+					</div>
+				</details>
+			)}
+			{posibles.length === 0 && <p class="text-theme-sm text-gray-500">Pedido cerrado.</p>}
+		</div>
+	</Tarjeta>
+
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+		<Tarjeta titulo="Clienta">
+			<User slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<ul class="text-theme-sm space-y-2 text-gray-700">
+				<li class="font-medium text-gray-800">{p.nombre}</li>
+				<li class="flex items-center gap-2"><Mail class="size-4 shrink-0 text-gray-400" aria-hidden="true" /><a href={`mailto:${p.email}`} class="hover:text-brand-500 truncate">{p.email}</a></li>
+				<li class="flex items-center gap-2"><Phone class="size-4 shrink-0 text-gray-400" aria-hidden="true" /><a href={`tel:${p.telefono}`} class="hover:text-brand-500">{p.telefono}</a></li>
+				<li class="flex items-center gap-2"><FileText class="size-4 shrink-0 text-gray-400" aria-hidden="true" />DNI {p.dni}{p.cuit ? ` · CUIT ${p.cuit}` : ''}</li>
+			</ul>
+		</Tarjeta>
+
+		<Tarjeta titulo={ENTREGAS[p.metodo_entrega]}>
+			<Entrega slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<div class="text-theme-sm space-y-2 text-gray-700">
+				{p.metodo_entrega === 'domicilio' && <p>{p.calle} {p.altura}{p.piso_depto ? `, ${p.piso_depto}` : ''}<br />{p.localidad}, {p.provincia} · CP {p.codigo_postal}</p>}
+				{p.metodo_entrega === 'sucursal' && <p>{p.sucursal_correo}<br />{p.localidad ? `${p.localidad}, ` : ''}{p.provincia} · CP {p.codigo_postal}</p>}
+				{conRetiro && <p class="text-gray-500">Retira en persona.</p>}
+				{p.indicaciones && <p class="rounded-lg bg-gray-50 p-2.5">{p.indicaciones}</p>}
+				{p.numero_seguimiento && <p><Insignia color="celeste"><Truck aria-hidden="true" />{p.numero_seguimiento}</Insignia></p>}
+			</div>
+		</Tarjeta>
+
+		<Tarjeta titulo={PAGOS[p.metodo_pago]}>
+			<Pago slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			{p.pagos.length === 0 ? <p class="text-theme-sm text-gray-500">Sin pagos todavía.</p> : (
+				<ul class="text-theme-sm space-y-3">
+					{p.pagos.map((g: any) => (
+						<li class="flex items-center justify-between gap-2">
+							<span><span class="font-medium text-gray-800 tabular-nums">{pesos(g.monto_centavos)}</span><br /><span class="text-theme-xs text-gray-500">{fecha(g.actualizado_en)}{g.id_externo ? ` · Nº ${g.id_externo}` : ''}</span></span>
+							<Insignia color={colorPago[g.estado] ?? 'gris'}>{g.estado}</Insignia>
+						</li>
+					))}
+				</ul>
+			)}
+		</Tarjeta>
+	</div>
+
+	<Tarjeta alRas>
+		<div class="overflow-x-auto">
+			<table class="min-w-full">
+				<thead class="border-b border-gray-100"><tr><th class="th">Prenda</th><th class="th num">Precio</th><th class="th num">Cant.</th><th class="th num">Subtotal</th></tr></thead>
+				<tbody class="divide-y divide-gray-100">
+					{p.items.map((i: any) => (
+						<tr>
+							<td class="td"><span class="font-medium text-gray-800">{i.nombre_producto}</span><br /><span class="text-theme-xs text-gray-500">{[i.talle, i.color, i.sku].filter(Boolean).join(' · ')}</span></td>
+							<td class="td num">{pesos(i.precio_unitario_centavos)}</td>
+							<td class="td num">{i.cantidad}</td>
+							<td class="td num">{pesos(i.precio_unitario_centavos * i.cantidad)}</td>
+						</tr>
+					))}
+				</tbody>
+				<tfoot class="border-t border-gray-100">
+					<tr><td class="td num text-gray-500" colspan="3">Subtotal</td><td class="td num">{pesos(p.subtotal_centavos)}</td></tr>
+					{p.descuentos.map((d: any) => <tr><td class="td num text-gray-500" colspan="3">{d.descripcion}</td><td class="td num text-success-600">− {pesos(d.monto_centavos)}</td></tr>)}
+					<tr><td class="td num text-gray-500" colspan="3">Envío</td><td class="td num">{p.envio_centavos ? pesos(p.envio_centavos) : 'Gratis'}</td></tr>
+					<tr><td class="td num font-semibold text-gray-800" colspan="3">Total</td><td class="td num text-base font-semibold text-gray-800">{pesos(p.total_centavos)}</td></tr>
+				</tfoot>
+			</table>
+		</div>
+	</Tarjeta>
+
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+		<Tarjeta titulo="Seguimiento y factura">
+			<FileText slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<form method="post" class="space-y-4">
+				<input type="hidden" name="accion" value="datos" />
+				<Campo etiqueta="Nº de seguimiento del correo" nombre="numeroSeguimiento" valor={p.numero_seguimiento} maxlength="80" />
+				<Campo etiqueta="Nº de factura" nombre="facturaNumero" valor={p.factura_numero} maxlength="40" />
+				<button class="btn btn-secundario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+			</form>
+		</Tarjeta>
+
+		<Tarjeta titulo="Historial">
+			<History slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<ol class="space-y-4">
+				{[...p.historial].reverse().map((h: any) => (
+					<li class="flex gap-3">
+						<span class="mt-1.5 size-2 shrink-0 rounded-full bg-gray-300" aria-hidden="true"></span>
+						<div class="text-theme-sm">
+							<Estado estado={h.estado_nuevo} />
+							<p class="text-theme-xs mt-1 text-gray-500">{fecha(h.creado_en)} · {h.admin_id ? 'desde el panel' : 'automático'}</p>
+							{h.nota && <p class="mt-1 text-gray-700">{h.nota}</p>}
+						</div>
+					</li>
+				))}
+			</ol>
+		</Tarjeta>
+	</div>
+</Panel>

@@ -1,0 +1,25 @@
+---
+// Estado de un pedido como insignia con ícono y color: se reconoce de un vistazo sin leer.
+import { Ban, CircleAlert, CircleCheck, Clock, PackageCheck, PackageOpen, Store, Truck, Undo2 } from '@lucide/astro';
+import { ESTADOS } from '../../lib/panel';
+import Insignia, { type ColorInsignia } from './Insignia.astro';
+
+interface Props {
+  estado: string;
+}
+const { estado } = Astro.props;
+const VISTA: Record<string, [ColorInsignia, any]> = {
+  pendiente_pago: ['ambar', Clock],
+  pagado: ['verde', CircleCheck],
+  en_preparacion: ['azul', PackageOpen],
+  enviado: ['celeste', Truck],
+  listo_para_retirar: ['celeste', Store],
+  entregado: ['verde', PackageCheck],
+  cancelado: ['gris', Ban],
+  reembolsado: ['violeta', Undo2],
+  a_revisar: ['rojo', CircleAlert],
+};
+const [color, Icono] = VISTA[estado] ?? ['gris', Clock];
+---
+
+<Insignia color={color}><Icono aria-hidden="true" />{ESTADOS[estado] ?? estado}</Insignia>

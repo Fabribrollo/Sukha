@@ -1,0 +1,211 @@
+---
+// Seguimiento del pedido. A esta página llegan los emails y Mercado Pago; la dirección lleva el token, que es la llave del pedido.
+// Por eso no lleva analítica ni se indexa.
+import { Banknote, CircleX, MessageCircle, Package, PackageCheck, Receipt, Store, Truck } from '@lucide/astro';
+import CopiarTexto from '../../components/tienda/CopiarTexto.tsx';
+import CuentaRegresiva from '../../components/tienda/CuentaRegresiva.tsx';
+import PagarAhora from '../../components/tienda/PagarAhora.tsx';
+import SolicitudPostventa from '../../components/tienda/SolicitudPostventa.tsx';
+import Tienda from '../../layouts/Tienda.astro';
+import { api } from '../../lib/api';
+import { datosDeLaTienda, enlaceWhatsapp, pesos } from '../../lib/tienda';
+
+export const prerender = false;
+
+type Pedido = {
+  numero: string;
+  estado: 'pendiente_pago' | 'pagado' | 'en_preparacion' | 'enviado' | 'listo_para_retirar' | 'entregado' | 'cancelado' | 'reembolsado' | 'a_revisar';
+  creadoEn: string;
+  nombre: string;
+  metodoEntrega: 'domicilio' | 'sucursal' | 'retiro';
+  numeroSeguimiento: string | null;
+  metodoPago: 'transferencia' | 'mercadopago';
+  subtotalCentavos: number;
+  descuentoCentavos: number;
+  envioCentavos: number;
+  totalCentavos: number;
+  reservaVenceEn: string | null;
+  items: { id: number; nombre: string; talle: string | null; color: string | null; precioUnitarioCentavos: number; cantidad: number }[];
+  descuentos: { descripcion: string; montoCentavos: number }[];
+  historial: { estado: string; fecha: string }[];
+  transferencia: { alias: string; titular: string; montoCentavos: number } | null;
+  retiro: { direccion: string; horario: string } | null;
+};
+
+const respuesta = await api(Astro.request, `/api/pedidos/${encodeURIComponent(Astro.params.token!)}`);
+if (respuesta.status === 404) return Astro.rewrite('/404');
+const p = (await respuesta.json()) as Pedido;
+const { tienda } = await datosDeLaTienda(Astro.request);
+
+const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba', day: 'numeric', month: 'short' });
+const cuando = (...estados: string[]) => {
+  const h = p.historial.find((x) => estados.includes(x.estado));
+  return h ? fecha(h.fecha) : null;
+};
+
+const retira = p.metodoEntrega === 'retiro';
+const pendiente = p.estado === 'pendiente_pago';
+const anulado = p.estado === 'cancelado' || p.estado === 'reembolsado';
+// Posición del pedido en la línea de pasos (0 = recibido … 4 = entregado).
+const posicion = { pendiente_pago: 0, a_revisar: 0, pagado: 1, en_preparacion: 2, enviado: 3, listo_para_retirar: 3, entregado: 4, cancelado: 0, reembolsado: 0 }[p.estado];
+const pasos = [
+  { nombre: 'Pedido recibido', Icono: Receipt, fecha: fecha(p.creadoEn) },
+  { nombre: 'Pagado', Icono: Banknote, fecha: cuando('pagado') },
+  { nombre: 'En preparación', Icono: Package, fecha: cuando('en_preparacion') },
+  { nombre: retira ? 'Listo para retirar' : 'Enviado', Icono: retira ? Store : Truck, fecha: cuando('enviado', 'listo_para_retirar') },
+  { nombre: 'Entregado', Icono: PackageCheck, fecha: cuando('entregado') },
+];
+
+const titulos: Record<Pedido['estado'], string> = {
+  pendiente_pago: p.metodoPago === 'transferencia' ? '¡Recibimos tu pedido!' : 'Tu pago está pendiente',
+  pagado: '¡Gracias por tu compra!',
+  en_preparacion: '¡Gracias por tu compra!',
+  enviado: 'Tu pedido está en camino',
+  listo_para_retirar: 'Tu pedido está listo para retirar',
+  entregado: '¡Esperamos que lo disfrutes!',
+  cancelado: 'Tu pedido se canceló',
+  reembolsado: 'Reembolsamos tu pedido',
+  a_revisar: 'Estamos revisando tu pago',
+};
+const bajadas: Partial<Record<Pedido['estado'], string>> = {
+  pagado: 'Ya confirmamos tu pago. En breve empezamos a preparar tu pedido.',
+  en_preparacion: 'Estamos preparando tu pedido con cariño.',
+  entregado: 'Si algo no es como esperabas, podés pedir un cambio o una devolución más abajo.',
+  cancelado: 'Se canceló porque no recibimos el pago a tiempo. Si ya pagaste, escribinos y lo resolvemos.',
+  reembolsado: 'El dinero vuelve al mismo medio de pago. Según el banco, puede tardar unos días en verse.',
+  a_revisar: 'Te vamos a escribir al email que nos dejaste en cuanto lo confirmemos.',
+};
+
+const puedePedirCambio = ['pagado', 'en_preparacion', 'enviado', 'listo_para_retirar', 'entregado'].includes(p.estado);
+const entrega = { domicilio: 'Envío a domicilio', sucursal: 'Envío a sucursal', retiro: 'Retiro en persona' }[p.metodoEntrega];
+const medioDePago = p.metodoPago === 'transferencia' ? 'Transferencia bancaria' : 'Mercado Pago';
+const mensajeWhatsapp = `Hola! Te mando el comprobante del pedido ${p.numero}.`;
+const retiroInfo = p.retiro ?? tienda.retiro;
+---
+
+<Tienda titulo={`Pedido ${p.numero}`} noindex>
+	<div class="contenedor max-w-3xl py-8 md:py-10">
+		<header class="mb-8 text-center">
+			<p class="text-suave mb-2 text-sm">Pedido {p.numero}</p>
+			<h1 class="text-2xl font-semibold md:text-3xl">{titulos[p.estado]}</h1>
+			{bajadas[p.estado] && <p class="text-suave mx-auto mt-2 max-w-lg text-sm">{bajadas[p.estado]}</p>}
+			{pendiente && p.metodoPago === 'transferencia' && <p class="text-suave mx-auto mt-2 max-w-lg text-sm">Hacé la transferencia y mandanos el comprobante: ahí confirmamos tu pedido.</p>}
+		</header>
+
+		{
+			pendiente && p.metodoPago === 'transferencia' && p.transferencia && (
+				<section aria-labelledby="transferencia" class="border-texto rounded-tienda mb-8 border-2 p-5">
+					<h2 id="transferencia" class="mb-4 text-base font-semibold">Datos para transferir</h2>
+					<dl class="space-y-4">
+						<div>
+							<dt class="text-suave text-xs">Monto a transferir</dt>
+							<dd class="text-2xl font-semibold">{pesos(p.transferencia.montoCentavos)}</dd>
+						</div>
+						<div class="flex flex-wrap items-end justify-between gap-3">
+							<div>
+								<dt class="text-suave text-xs">Alias</dt>
+								<dd class="text-lg font-semibold break-all">{p.transferencia.alias}</dd>
+							</div>
+							<CopiarTexto client:idle texto={p.transferencia.alias} etiqueta="Copiar alias" />
+						</div>
+						<div>
+							<dt class="text-suave text-xs">Titular</dt>
+							<dd>{p.transferencia.titular}</dd>
+						</div>
+					</dl>
+					{tienda.whatsapp && (
+						<a href={enlaceWhatsapp(tienda.whatsapp, mensajeWhatsapp)} target="_blank" rel="noopener" class="boton boton-primario mt-5 w-full">
+							<MessageCircle class="size-5" aria-hidden="true" />
+							Mandanos el comprobante por WhatsApp
+						</a>
+					)}
+					{!tienda.whatsapp && tienda.emailContacto && <p class="mt-5 text-sm">Mandanos el comprobante a <a class="underline" href={`mailto:${tienda.emailContacto}`}>{tienda.emailContacto}</a>.</p>}
+					{p.reservaVenceEn && <div class="mt-5 border-t border-linea pt-4"><CuentaRegresiva client:only="preact" vence={p.reservaVenceEn} /></div>}
+				</section>
+			)
+		}
+
+		{
+			pendiente && p.metodoPago === 'mercadopago' && (
+				<section class="border-linea rounded-tienda mb-8 space-y-4 border p-5">
+					<PagarAhora client:idle token={Astro.params.token!} />
+					{p.reservaVenceEn && <CuentaRegresiva client:only="preact" vence={p.reservaVenceEn} />}
+				</section>
+			)
+		}
+
+		{
+			p.estado === 'enviado' && p.numeroSeguimiento && (
+				<section class="border-linea rounded-tienda mb-8 flex flex-wrap items-center justify-between gap-3 border p-5">
+					<div>
+						<p class="text-suave text-xs">Número de seguimiento</p>
+						<p class="text-lg font-semibold break-all">{p.numeroSeguimiento}</p>
+					</div>
+					<CopiarTexto client:idle texto={p.numeroSeguimiento} />
+				</section>
+			)
+		}
+
+		{
+			p.estado === 'listo_para_retirar' && retiroInfo && (
+				<section class="border-linea rounded-tienda mb-8 border p-5 text-sm">
+					<h2 class="mb-2 flex items-center gap-2 font-semibold"><Store class="size-5" aria-hidden="true" />Dónde retirarlo</h2>
+					<p>{retiroInfo.direccion}</p>
+					<p class="text-suave">{retiroInfo.horario}</p>
+				</section>
+			)
+		}
+
+		{
+			anulado ? (
+				<p class="text-suave mb-8 flex items-center justify-center gap-2 text-sm"><CircleX class="size-5" aria-hidden="true" />Este pedido ya no está activo.</p>
+			) : (
+				<ol class="mb-10 grid grid-cols-5 gap-1 text-center" aria-label="Estado del pedido">
+					{pasos.map((paso, i) => {
+						const hecho = i <= posicion;
+						return (
+							<li class="flex flex-col items-center gap-1" aria-current={i === posicion ? 'step' : undefined}>
+								<span class={`flex size-10 items-center justify-center rounded-full border ${hecho ? 'border-texto bg-texto text-white' : 'border-linea text-suave'}`}>
+									<paso.Icono class="size-5" aria-hidden="true" />
+								</span>
+								<span class={`text-xs leading-tight ${hecho ? 'font-medium' : 'text-suave'}`}>{paso.nombre}</span>
+								<span class="text-suave min-h-4 text-[11px]">{hecho ? paso.fecha : ''}</span>
+							</li>
+						);
+					})}
+				</ol>
+			)
+		}
+
+		<section aria-labelledby="detalle" class="border-linea rounded-tienda border">
+			<h2 id="detalle" class="border-linea border-b px-5 py-3 text-base font-semibold">Detalle del pedido</h2>
+			<ul class="divide-linea divide-y px-5">
+				{p.items.map((i) => (
+					<li class="flex items-start justify-between gap-4 py-3 text-sm">
+						<span class="min-w-0">
+							<span class="block font-medium">{i.nombre}</span>
+							<span class="text-suave block text-xs">{[i.talle && `Talle ${i.talle}`, i.color, `${i.cantidad} ${i.cantidad === 1 ? 'unidad' : 'unidades'}`].filter(Boolean).join(' · ')}</span>
+						</span>
+						<span class="shrink-0">{pesos(i.precioUnitarioCentavos * i.cantidad)}</span>
+					</li>
+				))}
+			</ul>
+			<dl class="border-linea space-y-2 border-t px-5 py-4 text-sm">
+				<div class="flex justify-between"><dt>Subtotal</dt><dd>{pesos(p.subtotalCentavos)}</dd></div>
+				{p.descuentos.map((d) => <div class="text-exito flex justify-between"><dt>{d.descripcion}</dt><dd>-{pesos(d.montoCentavos)}</dd></div>)}
+				<div class="flex justify-between"><dt>Envío</dt><dd>{p.envioCentavos === 0 ? 'Gratis' : pesos(p.envioCentavos)}</dd></div>
+				<div class="border-linea flex justify-between border-t pt-3 text-base font-semibold"><dt>Total</dt><dd>{pesos(p.totalCentavos)}</dd></div>
+			</dl>
+			<dl class="bg-gris grid gap-3 px-5 py-4 text-sm sm:grid-cols-2">
+				<div><dt class="text-suave text-xs">Forma de entrega</dt><dd>{entrega}</dd></div>
+				<div><dt class="text-suave text-xs">Medio de pago</dt><dd>{medioDePago}</dd></div>
+			</dl>
+		</section>
+
+		<div class="mt-8 flex flex-col items-center gap-3 text-center">
+			{puedePedirCambio && <SolicitudPostventa client:idle token={Astro.params.token!} items={p.items.map(({ id, nombre, talle, color, cantidad }) => ({ id, nombre, talle, color, cantidad }))} />}
+			<a href="/productos" class="boton boton-secundario">Seguir comprando</a>
+			<p class="text-suave text-xs">Guardá esta página: es tu forma de ver el pedido. También te llegó por email.</p>
+		</div>
+	</div>
+</Tienda>

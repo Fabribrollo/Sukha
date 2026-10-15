@@ -1,0 +1,61 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sukha-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Sin URL pública: solo se llega a través del frontend (service binding).
+  "workers_dev": false,
+  // Guarda los registros y errores del backend en Cloudflare (Workers Logs, plan gratis) para poder diagnosticar.
+  "observability": { "enabled": true },
+
+  // Nivel superior = producción. Los bindings no se heredan: cada entorno repite los suyos.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sukha",
+      "database_id": "460ecc06-dab7-459c-b6f5-d2866e891335",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Fotos en KV (sin tarjeta, nunca factura). Límite gratis: 1 GB, 1.000 escrituras y 100.000 lecturas por día.
+  "kv_namespaces": [{ "binding": "IMAGENES", "id": "48ce71de7b9c4c62bb1ab370c658b4be" }],
+  // Máximo 5 intentos de login por minuto por IP.
+  "ratelimits": [
+    { "name": "LIMITE_LOGIN", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
+    { "name": "LIMITE_CHECKOUT", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
+    { "name": "LIMITE_PUBLICO", "namespace_id": "1005", "simple": { "limit": 120, "period": 60 } },
+    { "name": "LIMITE_PEDIDOS", "namespace_id": "1007", "simple": { "limit": 3, "period": 60 } }
+  ],
+  // Cada 5 minutos: libera reservas vencidas y manda los emails en cola.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "SITE_URL": "https://sukhaind.com.ar",
+    "EMAIL_FROM": "Sukhä <hola@sukhaind.com.ar>"
+  },
+
+  "env": {
+    "staging": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "sukha-staging",
+          "database_id": "8c3ab37a-26f2-4ff5-a4f7-efadd4fb8e59",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "kv_namespaces": [{ "binding": "IMAGENES", "id": "9b7b6e6c4fa64a08938158c20e6441b8" }],
+      "ratelimits": [
+        { "name": "LIMITE_LOGIN", "namespace_id": "1002", "simple": { "limit": 5, "period": 60 } },
+        { "name": "LIMITE_CHECKOUT", "namespace_id": "1004", "simple": { "limit": 10, "period": 60 } },
+        { "name": "LIMITE_PUBLICO", "namespace_id": "1006", "simple": { "limit": 120, "period": 60 } },
+        { "name": "LIMITE_PEDIDOS", "namespace_id": "1008", "simple": { "limit": 3, "period": 60 } }
+      ],
+      "triggers": { "crons": ["*/5 * * * *"] },
+      "vars": {
+        "SITE_URL": "https://sukha-frontend-staging.sukha-frontend.workers.dev",
+        "EMAIL_FROM": "Sukhä <hola@sukhaind.com.ar>"
+      }
+    }
+  }
+}

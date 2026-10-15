@@ -1,0 +1,38 @@
+---
+import Beneficios from '../components/tienda/Beneficios.astro';
+import Carrusel from '../components/tienda/Carrusel.astro';
+import SeccionProductos from '../components/tienda/SeccionProductos.astro';
+import Tienda from '../layouts/Tienda.astro';
+import { leer } from '../lib/api';
+import { datosDeLaTienda, type TarjetaDeProducto } from '../lib/tienda';
+
+export const prerender = false;
+
+const [{ tienda, filtros }, portada] = await Promise.all([
+  datosDeLaTienda(Astro.request),
+  leer<{ banners: any[]; destacados: TarjetaDeProducto[]; nuevos: TarjetaDeProducto[]; ofertas: TarjetaDeProducto[] }>(Astro.request, '/api/portada'),
+]);
+---
+
+<Tienda titulo="Sukhä">
+	{portada.banners.length > 0 && <Carrusel banners={portada.banners} />}
+
+	{filtros.categorias.length > 0 && (
+		<section class="contenedor mt-10 md:mt-14" aria-labelledby="sec-categorias">
+			<h2 id="sec-categorias" class="mb-5 text-xl font-semibold md:text-2xl">Categorías</h2>
+			<ul class="fila-deslizable md:grid md:grid-cols-4 md:overflow-visible">
+				{filtros.categorias.map((c) => (
+					<li class="w-[60%] shrink-0 snap-start sm:w-[36%] md:w-auto">
+						<a href={`/categoria/${c.slug}`} class="foto-vacia rounded-tienda hover:bg-linea flex aspect-[4/3] items-center justify-center p-4 text-center text-base font-semibold transition md:text-lg">{c.nombre}</a>
+					</li>
+				))}
+			</ul>
+		</section>
+	)}
+
+	<SeccionProductos titulo="Destacados" href="/productos?destacado=1" productos={portada.destacados} tienda={tienda} />
+	<SeccionProductos titulo="Nuevos ingresos" href="/productos" productos={portada.nuevos} tienda={tienda} />
+	<SeccionProductos titulo="Ofertas" href="/ofertas" productos={portada.ofertas} tienda={tienda} />
+
+	<Beneficios tienda={tienda} />
+</Tienda>

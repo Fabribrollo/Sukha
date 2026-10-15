@@ -1,0 +1,21 @@
+{
+  "name": "sukha",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev -w @sukha/backend",
+    "dev:frontend": "npm run dev -w @sukha/frontend",
+    "db:migrate": "npm run db:migrate -w @sukha/backend",
+    "build": "npm run build -w @sukha/frontend",
+    "check": "npm run check -w @sukha/backend && npm run build -w @sukha/frontend",
+    "db:seed": "npm run db:seed -w @sukha/backend"
+  },
+  "allowScripts": {
+    "workerd@1.20261006.1": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true
+  }
+}

@@ -1,0 +1,9 @@
+---
+// Logo provisorio en texto. Para poner el logo de la marca, reemplazar el contenido de este componente por una imagen.
+interface Props {
+  class?: string;
+}
+const { class: clase } = Astro.props;
+---
+
+<a href="/" class:list={['text-texto inline-flex min-h-11 items-center text-xl font-semibold tracking-[0.25em]', clase]} aria-label="Sukhä, ir al inicio">SUKHÄ</a>

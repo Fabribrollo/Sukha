@@ -1,0 +1,52 @@
+---
+// Tarjeta de producto: se usa en la portada, los listados, los relacionados y el 404.
+import { ImageOff } from '@lucide/astro';
+import { conTransferencia, cuota, pesos, porcentajeDescuento, precioFinal, srcsetFoto, urlFoto, type Tienda, type TarjetaDeProducto } from '../../lib/formato';
+
+interface Props {
+  producto: TarjetaDeProducto;
+  tienda: Tienda;
+  // La primera tarjetas de la página cargan sus fotos de inmediato; el resto, al acercarse.
+  prioridad?: boolean;
+  // Cuánto ocupa la tarjeta en pantalla, para que el navegador elija el tamaño de foto adecuado.
+  sizes?: string;
+}
+const { producto: p, tienda, prioridad = false, sizes = '(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw' } = Astro.props;
+const descuento = porcentajeDescuento(p);
+const cobrado = precioFinal(p);
+const transferencia = conTransferencia(cobrado, tienda.descuentoTransferenciaPorcentaje);
+const cuotas = cuota(cobrado, tienda.cuotasSinInteres);
+const agotado = !p.disponible;
+---
+
+<article class="group relative">
+	<a href={`/producto/${p.slug}`} class="block">
+		<div class="foto-vacia relative aspect-[3/4] overflow-hidden">
+			{p.foto ? (
+				<img
+					src={urlFoto(p.foto, 'mediano')}
+					srcset={srcsetFoto(p.foto)}
+					sizes={sizes}
+					alt=""
+					width="900"
+					height="1200"
+					loading={prioridad ? 'eager' : 'lazy'}
+					class:list={['size-full object-cover transition duration-300 group-hover:scale-[1.02]', agotado && 'opacity-60']}
+				/>
+			) : (
+				<ImageOff class="size-8" aria-label="Sin foto" />
+			)}
+			<div class="absolute top-2 left-2 flex flex-col items-start gap-1">
+				{descuento !== null && !agotado && <span class="insignia bg-oferta text-white">-{descuento}%</span>}
+				{agotado && <span class="insignia text-suave border-linea border bg-white">Sin stock</span>}
+			</div>
+		</div>
+		<h3 class="mt-3 line-clamp-2 min-h-10 text-sm leading-5">{p.nombre}</h3>
+		<p class="mt-1 flex flex-wrap items-baseline gap-x-2">
+			<span class:list={['text-base font-semibold', agotado && 'text-suave']}>{pesos(cobrado)}</span>
+			{p.precioOfertaCentavos !== null && <s class="text-suave text-sm">{pesos(p.precioCentavos)}</s>}
+		</p>
+	</a>
+	{!agotado && transferencia !== null && <p class="text-exito mt-1 text-xs font-medium">{pesos(transferencia)} con transferencia</p>}
+	{!agotado && cuotas && <p class="text-suave mt-0.5 text-xs">{cuotas.cantidad} cuotas sin interés de {pesos(cuotas.monto)}</p>}
+</article>

@@ -1,0 +1,38 @@
+---
+// Número destacado con su ícono (metric card de TailAdmin). Con `href` toda la tarjeta es un enlace.
+// `alerta` la pinta de color para lo que necesita atención; `apilada` pone el ícono arriba, para grillas de dos columnas en el celular.
+interface Props {
+  etiqueta: string;
+  valor: string | number;
+  color?: 'gris' | 'azul' | 'verde' | 'ambar' | 'rojo' | 'violeta';
+  href?: string;
+  alerta?: boolean;
+  apilada?: boolean;
+}
+const { etiqueta, valor, color = 'gris', href, alerta = false, apilada = false } = Astro.props;
+const CAJA: Record<string, string> = {
+  gris: 'bg-gray-100 text-gray-700',
+  azul: 'bg-brand-50 text-brand-500',
+  verde: 'bg-success-50 text-success-600',
+  ambar: 'bg-warning-50 text-warning-600',
+  rojo: 'bg-error-50 text-error-600',
+  violeta: 'bg-purple-50 text-purple-600',
+};
+const Etiqueta = href ? 'a' : 'div';
+---
+
+<Etiqueta
+	href={href}
+	class:list={[
+		'flex gap-4 rounded-2xl border p-4 sm:p-5',
+		apilada ? 'flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4' : 'items-center',
+		alerta ? 'border-warning-500 bg-warning-50' : 'border-gray-200 bg-white',
+		href && 'hover:shadow-theme-sm transition',
+	]}
+>
+	<span class:list={['flex size-12 shrink-0 items-center justify-center rounded-xl [&>svg]:size-6', alerta ? 'bg-warning-100 text-warning-700' : CAJA[color]]}><slot /></span>
+	<span class="min-w-0">
+		<span class:list={['text-theme-sm block text-gray-500', !apilada && 'truncate']}>{etiqueta}</span>
+		<span class="text-theme-xl block font-semibold whitespace-nowrap text-gray-800 tabular-nums">{valor}</span>
+	</span>
+</Etiqueta>

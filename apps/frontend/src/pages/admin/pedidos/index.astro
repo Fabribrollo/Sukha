@@ -1,0 +1,93 @@
+---
+import { ChevronLeft, ChevronRight, CreditCard, Download, Landmark, MapPin, Search, ShoppingBag, Store, Truck } from '@lucide/astro';
+import Estado from '../../../components/panel/Estado.astro';
+import Tarjeta from '../../../components/panel/Tarjeta.astro';
+import Vacio from '../../../components/panel/Vacio.astro';
+import Panel from '../../../layouts/Panel.astro';
+import { leer } from '../../../lib/api';
+import { ENTREGAS, ESTADOS, PAGOS, fecha, pesos } from '../../../lib/panel';
+
+export const prerender = false;
+
+const estado = Astro.url.searchParams.get('estado') ?? '';
+const q = Astro.url.searchParams.get('q') ?? '';
+const pagina = Number(Astro.url.searchParams.get('pagina')) || 1;
+const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), pagina: String(pagina) });
+const pedidos = await leer<any[]>(Astro.request, `/api/admin/pedidos?${consulta}`);
+
+const enlace = (cambios: Record<string, string>) => {
+  const p = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...cambios });
+  for (const [clave, valor] of [...p]) if (!valor) p.delete(clave);
+  return `/admin/pedidos?${p}`;
+};
+const hoy = new Date().toISOString().slice(0, 10);
+const haceUnMes = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+const iconoEntrega: Record<string, any> = { domicilio: Truck, sucursal: MapPin, retiro: Store };
+const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
+---
+
+<Panel titulo="Ventas">
+	<details slot="acciones" class="relative">
+		<summary class="btn btn-secundario"><Download class="size-4" aria-hidden="true" />Exportar</summary>
+		<form method="get" action="/api/admin/pedidos/exportar" class="shadow-theme-lg absolute right-0 z-10 mt-2 w-64 space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+			<label class="etiqueta" for="exp-desde">Desde</label>
+			<input id="exp-desde" type="date" name="desde" value={haceUnMes} required class="campo" />
+			<label class="etiqueta" for="exp-hasta">Hasta</label>
+			<input id="exp-hasta" type="date" name="hasta" value={hoy} required class="campo" />
+			<button class="btn btn-primario w-full"><Download class="size-4" aria-hidden="true" />Descargar Excel</button>
+		</form>
+	</details>
+
+	<div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+		<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Filtrar por estado">
+			<a href={enlace({ estado: '', pagina: '' })} aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todas</a>
+			{Object.entries(ESTADOS).map(([valor, nombre]) => (
+				<a href={enlace({ estado: valor, pagina: '' })} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}</a>
+			))}
+		</nav>
+		<form method="get" class="relative lg:w-72" role="search">
+			{estado && <input type="hidden" name="estado" value={estado} />}
+			<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+			<input type="search" name="q" value={q} placeholder="Número, nombre o email" aria-label="Buscar ventas" class="campo pl-10" />
+		</form>
+	</div>
+
+	<Tarjeta alRas>
+		{pedidos.length === 0 ? <Vacio texto="No hay ventas con este filtro"><ShoppingBag aria-hidden="true" /></Vacio> : (
+			<div class="overflow-x-auto">
+				<table class="min-w-full">
+					<thead class="border-b border-gray-100">
+						<tr><th class="th">Pedido</th><th class="th">Clienta</th><th class="th">Estado</th><th class="th">Pago y entrega</th><th class="th num">Total</th></tr>
+					</thead>
+					<tbody class="divide-y divide-gray-100">
+						{pedidos.map((p) => {
+							const Entrega = iconoEntrega[p.metodo_entrega];
+							const Pago = p.metodo_pago === 'transferencia' ? Landmark : CreditCard;
+							return (
+								<tr class="hover:bg-gray-50">
+									<td class="td"><a href={`/admin/pedidos/${p.id}`} class="text-brand-500 font-medium hover:underline">{p.numero}</a><br /><span class="text-theme-xs text-gray-500">{fecha(p.creado_en)}</span></td>
+									<td class="td"><span class="font-medium text-gray-800">{p.nombre}</span><br /><span class="text-theme-xs text-gray-500">{p.email}</span></td>
+									<td class="td"><Estado estado={p.estado} /></td>
+									<td class="td">
+										<span class="flex items-center gap-3 text-gray-500">
+											<span title={PAGOS[p.metodo_pago]}><Pago class="size-5" aria-label={PAGOS[p.metodo_pago]} /></span>
+											<span title={ENTREGAS[p.metodo_entrega]}><Entrega class="size-5" aria-label={ENTREGAS[p.metodo_entrega]} /></span>
+										</span>
+									</td>
+									<td class="td num font-medium text-gray-800">{pesos(p.total_centavos)}</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+		)}
+	</Tarjeta>
+
+	{(pagina > 1 || pedidos.length === 50) && (
+		<div class="flex justify-end gap-2">
+			{pagina > 1 && <a class="btn btn-secundario" href={enlace({ pagina: String(pagina - 1) })}><ChevronLeft class="size-4" aria-hidden="true" />Anteriores</a>}
+			{pedidos.length === 50 && <a class="btn btn-secundario" href={enlace({ pagina: String(pagina + 1) })}>Siguientes<ChevronRight class="size-4" aria-hidden="true" /></a>}
+		</div>
+	)}
+</Panel>

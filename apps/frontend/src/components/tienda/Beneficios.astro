@@ -1,0 +1,30 @@
+---
+// Franja de beneficios de la portada. Solo muestra lo que es verdad según la configuración de la tienda.
+import { Banknote, CreditCard, RefreshCw, Truck } from '@lucide/astro';
+import type { Tienda } from '../../lib/formato';
+
+interface Props {
+  tienda: Tienda;
+}
+const { tienda } = Astro.props;
+const items = [
+  { Icono: Truck, texto: 'Envíos a todo el país', detalle: 'Correo Argentino y Andreani' },
+  tienda.descuentoTransferenciaPorcentaje > 0 && { Icono: Banknote, texto: `${tienda.descuentoTransferenciaPorcentaje}% off pagando con transferencia`, detalle: 'Se aplica solo al finalizar la compra' },
+  tienda.cuotasSinInteres && { Icono: CreditCard, texto: `Hasta ${tienda.cuotasSinInteres.cantidad} cuotas sin interés`, detalle: 'Con tarjeta, en Mercado Pago' },
+  tienda.contenido.contenido_politica_cambios && { Icono: RefreshCw, texto: 'Cambios y devoluciones', detalle: 'Mirá cómo hacerlo', href: '/cambios-y-devoluciones' },
+].filter(Boolean) as { Icono: any; texto: string; detalle: string; href?: string }[];
+---
+
+<section class="bg-gris mt-12 md:mt-16" aria-label="Beneficios">
+	<ul class="contenedor grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-4">
+		{items.map(({ Icono, texto, detalle, href }) => (
+			<li class="flex items-start gap-3">
+				<Icono class="mt-0.5 size-7 shrink-0" aria-hidden="true" />
+				<p class="text-sm">
+					{href ? <a href={href} class="font-semibold hover:underline">{texto}</a> : <span class="font-semibold">{texto}</span>}
+					<span class="text-suave block">{detalle}</span>
+				</p>
+			</li>
+		))}
+	</ul>
+</section>

@@ -1,0 +1,253 @@
+---
+// Listado de productos con filtros, orden y paginación. Lo usan /productos, /categoria/*, /coleccion/*, /ofertas y /buscar.
+// Los filtros son un formulario común (GET): funciona sin JavaScript. Con JavaScript, en escritorio se aplican al tocar
+// cada opción, y en el celular el botón muestra cuántos resultados va a dar. En el celular el formulario es un panel lateral.
+import { Search, SlidersHorizontal, X } from '@lucide/astro';
+import { type Filtros, type Listado as DatosListado, pesos, type Tienda, type TarjetaDeProducto } from '../../lib/formato';
+import { conCambios, type Base, type Parametros } from '../../lib/listado';
+import Grilla from './Grilla.astro';
+import Migas from './Migas.astro';
+import Paginacion from './Paginacion.astro';
+
+interface Props {
+  titulo: string;
+  subtitulo?: string;
+  migas: { texto: string; href?: string }[];
+  datos: DatosListado;
+  p: Parametros;
+  base: Base;
+  filtros: Filtros;
+  tienda: Tienda;
+  // Muestra la lista de categorías en el costado (en las páginas que no son de una categoría).
+  mostrarCategorias?: boolean;
+  // Atajos a las subcategorías de una categoría (en las páginas de categoría).
+  atajos?: { padre: { nombre: string; slug: string }; actual: string; hijas: { nombre: string; slug: string }[] };
+  // Productos para sugerir si no hay resultados.
+  sugeridos?: TarjetaDeProducto[];
+}
+const { titulo, subtitulo, migas, datos, p, base, filtros, tienda, mostrarCategorias = false, atajos, sugeridos = [] } = Astro.props;
+const { productos, total } = datos;
+const ruta = Astro.url.pathname;
+const hayFiltros = p.talles.length > 0 || p.colores.length > 0 || p.min !== null || p.max !== null || !!base.destacado;
+const chips: { texto: string; quitar: string }[] = [];
+for (const id of p.talles) chips.push({ texto: `Talle ${filtros.talles.find((t) => t.id === id)?.nombre ?? id}`, quitar: conCambios(Astro.url, { talle: p.talles.filter((t) => t !== id).map(String) }) });
+for (const id of p.colores) chips.push({ texto: filtros.colores.find((c) => c.id === id)?.nombre ?? String(id), quitar: conCambios(Astro.url, { color: p.colores.filter((c) => c !== id).map(String) }) });
+if (p.min !== null || p.max !== null) {
+  const texto = p.min !== null && p.max !== null ? `${pesos(p.min * 100)} a ${pesos(p.max * 100)}` : p.min !== null ? `Desde ${pesos(p.min * 100)}` : `Hasta ${pesos(p.max! * 100)}`;
+  chips.push({ texto, quitar: conCambios(Astro.url, { min: null, max: null }) });
+}
+// "Limpiar filtros": la misma página sin filtros, conservando la búsqueda.
+const limpiar = conCambios(Astro.url, { talle: null, color: null, min: null, max: null, orden: null });
+// Parámetros fijos de la página, para que el script pueda calcular cuántos resultados da cada combinación.
+const baseApi = new URLSearchParams(Object.entries({ categoria: base.categoria, coleccion: base.coleccion, q: base.q, oferta: base.oferta ? '1' : undefined, destacado: base.destacado ? '1' : undefined }).filter(([, v]) => v) as [string, string][]).toString();
+const seccion = 'border-linea border-b py-4';
+const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between text-sm font-semibold';
+---
+
+<div class="contenedor pt-5 pb-4">
+	<Migas items={migas} />
+	<div class="mt-4 flex flex-wrap items-end justify-between gap-2">
+		<div>
+			<h1 class="text-2xl font-semibold md:text-3xl">{titulo}</h1>
+			{subtitulo && <p class="text-suave mt-1 text-sm">{subtitulo}</p>}
+		</div>
+		<p class="text-suave text-sm" aria-live="polite">{total} {total === 1 ? 'producto' : 'productos'}</p>
+	</div>
+
+	{atajos && atajos.hijas.length > 0 && (
+		<nav aria-label="Subcategorías" class="mt-4">
+			<ul class="fila-deslizable gap-2">
+				<li class="shrink-0"><a href={`/categoria/${atajos.padre.slug}`} aria-current={atajos.actual === atajos.padre.slug ? 'page' : undefined} class="rounded-tienda border-linea inline-flex min-h-11 items-center border px-4 text-sm aria-[current=page]:border-texto aria-[current=page]:bg-gris aria-[current=page]:font-semibold hover:bg-gris">Todo {atajos.padre.nombre}</a></li>
+				{atajos.hijas.map((h) => <li class="shrink-0"><a href={`/categoria/${h.slug}`} aria-current={atajos.actual === h.slug ? 'page' : undefined} class="rounded-tienda border-linea inline-flex min-h-11 items-center border px-4 text-sm aria-[current=page]:border-texto aria-[current=page]:bg-gris aria-[current=page]:font-semibold hover:bg-gris">{h.nombre}</a></li>)}
+			</ul>
+		</nav>
+	)}
+
+	<div class="border-linea mt-5 flex items-center justify-between gap-3 border-y py-3">
+		<label for="filtros-t" class="boton boton-secundario min-h-11 px-4 lg:hidden"><SlidersHorizontal class="size-4" aria-hidden="true" />Filtrar{chips.length > 0 && ` (${chips.length})`}</label>
+		<span class="text-suave hidden text-sm lg:block">{hayFiltros ? 'Filtros aplicados' : 'Filtrá por talle, color o precio'}</span>
+		<div class="flex items-center gap-2">
+			<label for="orden" class="text-suave hidden text-sm sm:block">Ordenar por</label>
+			<select id="orden" name="orden" form="filtros-form" class="campo min-h-11 w-auto py-0 pr-9 text-sm">
+				<option value="" selected={p.orden === ''}>Más nuevos</option>
+				<option value="precio_asc" selected={p.orden === 'precio_asc'}>Menor precio</option>
+				<option value="precio_desc" selected={p.orden === 'precio_desc'}>Mayor precio</option>
+			</select>
+		</div>
+	</div>
+
+	{chips.length > 0 && (
+		<ul class="mt-4 flex flex-wrap items-center gap-2" aria-label="Filtros activos">
+			{chips.map((c) => (
+				<li><a href={c.quitar} class="bg-gris rounded-tienda hover:bg-linea inline-flex min-h-9 items-center gap-1.5 px-3 text-sm" title={`Quitar ${c.texto}`}>{c.texto}<X class="size-3.5" aria-hidden="true" /><span class="sr-only">quitar filtro</span></a></li>
+			))}
+			<li><a href={limpiar} class="text-sm underline underline-offset-4 hover:no-underline">Limpiar todo</a></li>
+		</ul>
+	)}
+
+	<div class="mt-6 lg:grid lg:grid-cols-[250px_1fr] lg:gap-10">
+		<input type="checkbox" id="filtros-t" class="peer sr-only" aria-label="Abrir o cerrar los filtros" />
+		<form
+			id="filtros-form"
+			method="get"
+			action={ruta}
+			data-filtros
+			data-base={baseApi}
+			class="fixed inset-y-0 right-0 z-50 flex w-[88%] max-w-sm translate-x-full flex-col bg-white transition-transform duration-200 peer-checked:translate-x-0 lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0"
+		>
+			<div class="border-linea flex h-16 shrink-0 items-center justify-between border-b px-4 lg:hidden">
+				<span class="text-lg font-semibold">Filtrar</span>
+				<label for="filtros-t" class="boton-icono" title="Cerrar filtros"><X class="size-5" aria-hidden="true" /></label>
+			</div>
+
+			<div class="flex-1 overflow-y-auto px-4 pb-4 lg:px-0 lg:pb-0">
+				{base.q && <input type="hidden" name="q" value={base.q} />}
+				{base.destacado && <input type="hidden" name="destacado" value="1" />}
+
+				{mostrarCategorias && filtros.categorias.length > 0 && (
+					<details open class={seccion}>
+						<summary class={tituloSeccion}>Categoría</summary>
+						<ul class="space-y-1">
+							{filtros.categorias.map((c) => (
+									<li>
+										<a href={`/categoria/${c.slug}`} class="hover:underline flex min-h-11 items-center text-sm font-medium">{c.nombre}</a>
+										{c.hijas.length > 0 && <ul class="border-linea ml-2 border-l pl-3">{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="text-suave hover:text-texto hover:underline flex min-h-11 items-center text-sm">{h.nombre}</a></li>)}</ul>}
+									</li>
+								))}
+						</ul>
+					</details>
+				)}
+
+				{filtros.talles.length > 0 && (
+					<details open class={seccion}>
+						<summary class={tituloSeccion}>Talle</summary>
+						<fieldset class="flex flex-wrap gap-2">
+							<legend class="sr-only">Talle</legend>
+							{filtros.talles.map((t) => (
+								<label class="cursor-pointer">
+									<input type="checkbox" name="talle" value={t.id} checked={p.talles.includes(t.id)} class="peer sr-only" />
+									<span class="border-linea rounded-tienda peer-checked:border-primario peer-checked:bg-primario peer-checked:text-primario-texto peer-focus-visible:outline-texto flex h-11 min-w-11 items-center justify-center border px-3 text-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">{t.nombre}</span>
+								</label>
+							))}
+						</fieldset>
+					</details>
+				)}
+
+				{filtros.colores.length > 0 && (
+					<details open class={seccion}>
+						<summary class={tituloSeccion}>Color</summary>
+						<fieldset class="grid grid-cols-2 gap-x-2 gap-y-1">
+							<legend class="sr-only">Color</legend>
+							{filtros.colores.map((c) => (
+								<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+									<input type="checkbox" name="color" value={c.id} checked={p.colores.includes(c.id)} class="peer sr-only" />
+									<span class="border-linea peer-checked:ring-texto peer-focus-visible:outline-texto size-6 shrink-0 rounded-full border peer-checked:ring-2 peer-checked:ring-offset-2 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2" style={`background:${c.hex ?? 'transparent'}`}></span>
+									<span class="peer-checked:font-semibold">{c.nombre}</span>
+								</label>
+							))}
+						</fieldset>
+					</details>
+				)}
+
+				<details open class={seccion}>
+					<summary class={tituloSeccion}>Precio</summary>
+					<div class="flex items-center gap-2">
+						<label class="flex-1"><span class="sr-only">Precio desde, en pesos</span><input name="min" inputmode="numeric" pattern="[0-9]*" placeholder="Desde $" value={p.min ?? ''} class="campo min-h-11 text-sm" /></label>
+						<span class="text-suave" aria-hidden="true">–</span>
+						<label class="flex-1"><span class="sr-only">Precio hasta, en pesos</span><input name="max" inputmode="numeric" pattern="[0-9]*" placeholder="Hasta $" value={p.max ?? ''} class="campo min-h-11 text-sm" /></label>
+					</div>
+					{filtros.precio.max > 0 && <p class="text-suave mt-2 text-xs">De {pesos(filtros.precio.min)} a {pesos(filtros.precio.max)}</p>}
+				</details>
+			</div>
+
+			<div class="border-linea space-y-2 border-t p-4 lg:border-0 lg:px-0">
+				<button class="boton boton-primario w-full" data-aplicar>Aplicar filtros</button>
+				{hayFiltros && <a href={limpiar} class="boton boton-secundario w-full">Limpiar filtros</a>}
+			</div>
+		</form>
+		<label for="filtros-t" class="fixed inset-0 z-40 hidden bg-black/50 peer-checked:block lg:peer-checked:hidden" aria-hidden="true"></label>
+
+		<section aria-label="Productos">
+			{productos.length > 0 ? (
+				<>
+					<Grilla productos={productos} tienda={tienda} columnas={3} prioridad={4} />
+					<Paginacion pagina={datos.pagina} total={total} porPagina={datos.porPagina} />
+				</>
+			) : (
+				<div class="flex flex-col items-center gap-3 px-4 py-16 text-center">
+					<span class="foto-vacia size-16 rounded-full"><Search class="size-7" aria-hidden="true" /></span>
+					<p class="text-lg font-semibold">{base.q ? `No encontramos productos para «${base.q}»` : 'No encontramos productos con estos filtros'}</p>
+					<p class="text-suave text-sm">Probá con otras palabras o sacá algún filtro.</p>
+					{(hayFiltros || p.orden) && <a href={limpiar} class="boton boton-primario mt-2">Limpiar filtros</a>}
+				</div>
+			)}
+		</section>
+	</div>
+
+	{productos.length === 0 && sugeridos.length > 0 && (
+		<section class="mt-12" aria-labelledby="sec-sugeridos">
+			<h2 id="sec-sugeridos" class="mb-5 text-xl font-semibold">Mirá también</h2>
+			<Grilla productos={sugeridos} tienda={tienda} />
+		</section>
+	)}
+</div>
+
+<script>
+	// Mejora los filtros: en escritorio se aplican al tocar cada opción; en el celular el botón dice cuántos resultados da.
+	const form = document.querySelector<HTMLFormElement>('[data-filtros]');
+	if (form) {
+		const boton = form.querySelector<HTMLButtonElement>('[data-aplicar]')!;
+		const textoOriginal = boton.textContent;
+		const escritorio = matchMedia('(min-width: 1024px)');
+		const orden = document.getElementById('orden') as HTMLSelectElement;
+		let espera: number | undefined;
+
+		// La consulta a la API con lo que hay marcado ahora (los precios se escriben en pesos y la API los quiere en centavos).
+		const contar = async () => {
+			const datos = new FormData(form);
+			const q = new URLSearchParams(form.dataset.base);
+			const lista = (clave: string) => datos.getAll(clave).join(',');
+			if (lista('talle')) q.set('talle', lista('talle'));
+			if (lista('color')) q.set('color', lista('color'));
+			for (const clave of ['min', 'max']) {
+				const n = Number(datos.get(clave));
+				if (n > 0) q.set(clave, String(Math.round(n) * 100));
+			}
+			q.set('limite', '1');
+			try {
+				const r = await fetch(`/api/catalogo/productos?${q}`);
+				const { total } = (await r.json()) as { total: number };
+				boton.textContent = `Ver ${total} ${total === 1 ? 'resultado' : 'resultados'}`;
+			} catch {
+				boton.textContent = textoOriginal;
+			}
+		};
+
+		form.addEventListener('change', (e) => {
+			if ((e.target as HTMLElement).matches('[name=min], [name=max]')) return; // el precio se aplica con el botón o con Enter
+			if (escritorio.matches) form.requestSubmit();
+			else {
+				clearTimeout(espera);
+				espera = window.setTimeout(contar, 200);
+			}
+		});
+		orden.addEventListener('change', () => form.requestSubmit());
+		for (const campo of form.querySelectorAll('[name=min], [name=max]')) {
+			campo.addEventListener('input', () => {
+				if (escritorio.matches) return;
+				clearTimeout(espera);
+				espera = window.setTimeout(contar, 400);
+			});
+		}
+		// Los campos vacíos no se mandan, para que la dirección quede limpia.
+		form.addEventListener('submit', () => {
+			for (const campo of form.querySelectorAll<HTMLInputElement>('[name=min], [name=max]')) if (!campo.value.trim()) campo.disabled = true;
+			if (!orden.value) orden.disabled = true;
+		});
+		// Si se vuelve con "atrás", se restauran los campos.
+		addEventListener('pageshow', () => {
+			for (const campo of form.querySelectorAll<HTMLInputElement>('[name=min], [name=max]')) campo.disabled = false;
+			orden.disabled = false;
+		});
+	}
+</script>

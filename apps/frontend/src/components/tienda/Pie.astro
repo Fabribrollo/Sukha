@@ -1,0 +1,88 @@
+---
+// Pie de la tienda: categorías, información, contacto y newsletter; medios de pago y envío; datos legales.
+import { Banknote, CreditCard, Mail, MessageCircle, Truck, Undo2 } from '@lucide/astro';
+import IconoInstagram from './IconoInstagram.astro';
+import { enlaceWhatsapp, type Filtros, type Tienda } from '../../lib/formato';
+import Newsletter from './Newsletter.tsx';
+
+interface Props {
+  tienda: Tienda;
+  filtros: Filtros;
+}
+const { tienda, filtros } = Astro.props;
+const titulo = 'mb-3 text-sm font-semibold tracking-wide uppercase';
+const link = 'text-suave hover:text-texto inline-flex min-h-11 items-center text-sm hover:underline';
+---
+
+<footer class="bg-gris mt-16">
+	<div class="contenedor grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4">
+		<nav aria-label="Categorías del pie">
+			<h2 class={titulo}>Categorías</h2>
+			<ul>
+				{filtros.categorias.map((c) => <li><a href={`/categoria/${c.slug}`} class={link}>{c.nombre}</a></li>)}
+				<li><a href="/productos" class={link}>Todos los productos</a></li>
+			</ul>
+		</nav>
+
+		<nav aria-label="Información">
+			<h2 class={titulo}>Información</h2>
+			<ul>
+				<li><a href="/quienes-somos" class={link}>Quiénes somos</a></li>
+				<li><a href="/preguntas-frecuentes" class={link}>Preguntas frecuentes</a></li>
+				<li><a href="/cambios-y-devoluciones" class={link}>Cambios y devoluciones</a></li>
+				<li><a href="/contacto" class={link}>Contacto</a></li>
+				<li><a href="/pedido/buscar" class={link}>Buscar mi pedido</a></li>
+				<!-- Obligatorio por ley (Res. 424/2020): tiene que verse destacado. -->
+				<li><a href="/arrepentimiento" class="border-texto rounded-tienda inline-flex min-h-11 items-center gap-2 border px-3 text-sm font-semibold hover:bg-white"><Undo2 class="size-4" aria-hidden="true" />Botón de arrepentimiento</a></li>
+			</ul>
+		</nav>
+
+		<div>
+			<h2 class={titulo}>Contacto</h2>
+			<ul>
+				{tienda.whatsapp && <li><a href={enlaceWhatsapp(tienda.whatsapp)} rel="noopener" class={`${link} flex items-center gap-2`}><MessageCircle class="size-4" aria-hidden="true" />WhatsApp</a></li>}
+				{tienda.instagram && <li><a href={`https://instagram.com/${tienda.instagram}`} rel="noopener" class={`${link} flex items-center gap-2`}><IconoInstagram class="size-4" aria-hidden="true" />@{tienda.instagram}</a></li>}
+				{tienda.emailContacto && <li><a href={`mailto:${tienda.emailContacto}`} class={`${link} flex items-center gap-2`}><Mail class="size-4" aria-hidden="true" />{tienda.emailContacto}</a></li>}
+				{!tienda.whatsapp && !tienda.instagram && !tienda.emailContacto && <li class="text-suave text-sm">Escribinos desde la página de contacto.</li>}
+			</ul>
+		</div>
+
+		<div>
+			<h2 class={titulo}>Novedades</h2>
+			<p class="text-suave mb-3 text-sm">Suscribite y enterate de las novedades.</p>
+			<Newsletter client:visible />
+		</div>
+	</div>
+
+	<div class="border-linea border-t">
+		<div class="contenedor flex flex-col gap-6 py-6 text-sm lg:flex-row lg:items-start lg:justify-between">
+			<div class="flex flex-wrap gap-x-10 gap-y-4">
+				<div>
+					<h2 class="mb-2 text-xs font-semibold tracking-wide uppercase">Medios de pago</h2>
+					<ul class="text-suave flex gap-4">
+						<li class="flex items-center gap-1.5"><CreditCard class="size-4" aria-hidden="true" />Mercado Pago</li>
+						<li class="flex items-center gap-1.5"><Banknote class="size-4" aria-hidden="true" />Transferencia</li>
+					</ul>
+				</div>
+				<div>
+					<h2 class="mb-2 text-xs font-semibold tracking-wide uppercase">Medios de envío</h2>
+					<ul class="text-suave flex gap-4">
+						<li class="flex items-center gap-1.5"><Truck class="size-4" aria-hidden="true" />Correo Argentino</li>
+						<li class="flex items-center gap-1.5"><Truck class="size-4" aria-hidden="true" />Andreani</li>
+					</ul>
+				</div>
+			</div>
+			<div class="text-suave text-xs lg:max-w-md lg:text-right">
+				{tienda.datosLegales && <p class="mb-2 whitespace-pre-line">{tienda.datosLegales}</p>}
+				<p class="mb-2"><a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor/formulario" rel="noopener" target="_blank" class="underline">Defensa del Consumidor: reclamos</a></p>
+				<p>© {new Date().getFullYear()} Sukhä</p>
+			</div>
+		</div>
+	</div>
+</footer>
+
+{tienda.whatsapp && (
+	<a href={enlaceWhatsapp(tienda.whatsapp)} rel="noopener" target="_blank" class="fixed right-4 bottom-4 z-30 flex size-14 items-center justify-center rounded-full bg-[#25d366] text-white shadow-lg hover:opacity-90" title="Escribinos por WhatsApp" aria-label="Escribinos por WhatsApp">
+		<MessageCircle class="size-7" aria-hidden="true" />
+	</a>
+)}

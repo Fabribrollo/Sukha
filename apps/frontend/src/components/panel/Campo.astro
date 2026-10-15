@@ -1,0 +1,39 @@
+---
+// Campo de formulario con su etiqueta. Sirve para <input>, <select> (pasando las opciones en el slot) y <textarea>.
+// La ayuda, si hay, va detrás de una "i" al lado de la etiqueta en lugar de un párrafo fijo.
+import Ayuda from './Ayuda.astro';
+
+interface Props {
+  etiqueta: string;
+  nombre: string;
+  // 'select' y 'area' cambian el elemento; cualquier otro valor es el type del <input>.
+  tipo?: string;
+  valor?: string | number | null;
+  ayuda?: string;
+  // Símbolo fijo a la izquierda, por ejemplo "$".
+  prefijo?: string;
+  class?: string;
+  [atributo: string]: any;
+}
+const { etiqueta, nombre, tipo = 'text', valor, ayuda, prefijo, class: clase, ...resto } = Astro.props;
+const id = `c-${nombre}-${Math.random().toString(36).slice(2, 7)}`;
+---
+
+<div class={clase}>
+	<label for={id} class="etiqueta">
+		{etiqueta}
+		{ayuda && <Ayuda>{ayuda}</Ayuda>}
+	</label>
+	{tipo === 'select' ? (
+		<select id={id} name={nombre} class="campo pr-10" {...resto}><slot /></select>
+	) : tipo === 'area' ? (
+		<textarea id={id} name={nombre} class="campo h-auto min-h-28" {...resto}>{valor ?? ''}</textarea>
+	) : prefijo ? (
+		<div class="relative">
+			<span class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-sm text-gray-400">{prefijo}</span>
+			<input id={id} name={nombre} type={tipo} value={valor ?? ''} class="campo pl-8" {...resto} />
+		</div>
+	) : (
+		<input id={id} name={nombre} type={tipo} value={valor ?? ''} class:list={['campo', tipo === 'color' && 'p-1.5', tipo === 'file' && 'h-auto py-2 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700']} {...resto} />
+	)}
+</div>

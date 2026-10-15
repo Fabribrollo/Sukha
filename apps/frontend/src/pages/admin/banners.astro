@@ -1,0 +1,111 @@
+---
+import { CalendarClock, Image, ImagePlus, Link, Monitor, Pause, Pencil, Save, Smartphone, Trash2, Upload } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { deCampoFecha, entero, errorDe, marcado, paraCampoFecha, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const ruta = `/api/admin/banners/${f.get('id')}`;
+  const r =
+    f.get('accion') === 'borrar'
+      ? await api(Astro.request, ruta, undefined, 'DELETE')
+      : await api(Astro.request, ruta, {
+          textoAlternativo: txt(f, 'textoAlternativo'),
+          enlace: txt(f, 'enlace'),
+          orden: entero(f, 'orden') ?? 0,
+          activo: marcado(f, 'activo'),
+          desde: deCampoFecha(txt(f, 'desde')),
+          hasta: deCampoFecha(txt(f, 'hasta')),
+        }, 'PATCH');
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  error = await errorDe(r);
+}
+
+const banners = await leer<any[]>(Astro.request, '/api/admin/banners');
+const ahora = new Date().toISOString();
+const estado = (b: any): [string, any] => (!b.activo ? ['Pausado', 'gris'] : b.desde && b.desde > ahora ? ['Programado', 'ambar'] : b.hasta && b.hasta <= ahora ? ['Terminó', 'rojo'] : ['Visible', 'verde']);
+---
+
+<Panel titulo="Banners" error={error}>
+	{banners.length === 0 && <Tarjeta alRas><Vacio texto="Las imágenes grandes que rotan en la portada"><Image aria-hidden="true" /></Vacio></Tarjeta>}
+
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+		{banners.map((b) => {
+			const [texto, color] = estado(b);
+			return (
+				<article class="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+					<div class="relative">
+						<img src={`/api/imagenes/${b.clave}`} alt={b.textoAlternativo ?? ''} loading="lazy" class="aspect-[16/6] w-full bg-gray-100 object-cover" />
+						<span class="absolute top-3 left-3"><Insignia color={color}>{!b.activo && <Pause aria-hidden="true" />}{texto}</Insignia></span>
+						<span class="absolute top-3 right-3 flex gap-1.5">
+							<span class="shadow-theme-xs flex size-7 items-center justify-center rounded-full bg-white text-gray-600" title="Tiene imagen para computadora"><Monitor class="size-4" aria-label="Imagen para computadora" /></span>
+							{b.claveMovil && <span class="shadow-theme-xs flex size-7 items-center justify-center rounded-full bg-white text-gray-600" title="Tiene imagen para celular"><Smartphone class="size-4" aria-label="Imagen para celular" /></span>}
+						</span>
+					</div>
+					<div class="p-5">
+						<p class="text-theme-sm flex items-center gap-2 text-gray-600"><Link class="size-4 shrink-0 text-gray-400" aria-hidden="true" /><span class="truncate">{b.enlace ?? 'Sin enlace'}</span></p>
+						<details class="mt-3 border-t border-gray-100 pt-3">
+							<summary class="hover:text-brand-500 text-theme-sm inline-flex items-center gap-1.5 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar</summary>
+							<form method="post" class="mt-4 space-y-4">
+								<input type="hidden" name="id" value={b.id} />
+								<Campo etiqueta="Enlace" nombre="enlace" valor={b.enlace} placeholder="/categoria/vestidos" maxlength="200" ayuda="Adónde lleva al tocarlo. Tiene que ser una dirección de tu tienda, empezando con /." />
+								<Campo etiqueta="Descripción de la imagen" nombre="textoAlternativo" valor={b.textoAlternativo} maxlength="200" />
+								<div class="grid grid-cols-2 gap-3">
+									<Campo etiqueta="Desde" nombre="desde" tipo="datetime-local" valor={paraCampoFecha(b.desde)} />
+									<Campo etiqueta="Hasta" nombre="hasta" tipo="datetime-local" valor={paraCampoFecha(b.hasta)} />
+								</div>
+								<div class="flex flex-wrap items-end justify-between gap-3">
+									<Campo etiqueta="Orden" nombre="orden" inputmode="numeric" valor={b.orden} class="w-20" />
+									<Interruptor etiqueta="Activo" nombre="activo" marcado={b.activo === 1} class="pb-2.5" />
+								</div>
+								{/* Guardar va primero en el código para que Enter guarde y no borre; se muestra a la derecha. */}
+								<div class="flex flex-row-reverse items-center justify-between gap-3">
+									<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+									<button name="accion" value="borrar" class="btn btn-peligro-suave"><Trash2 class="size-4" aria-hidden="true" />Borrar</button>
+								</div>
+							</form>
+						</details>
+					</div>
+				</article>
+			);
+		})}
+	</div>
+
+	<Tarjeta titulo="Nuevo banner">
+		<ImagePlus slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		<form data-subida="/api/admin/banners" data-tamanos='{"escritorio":1920}' class="space-y-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<label class="hover:border-brand-300 hover:bg-brand-25 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center transition">
+					<Monitor class="size-7 text-gray-400" aria-hidden="true" />
+					<span class="text-sm font-medium text-gray-700">Imagen para computadora</span>
+					<input type="file" name="foto" accept="image/*" required class="text-theme-xs mx-auto max-w-full text-gray-500 file:hidden" />
+				</label>
+				<label class="hover:border-brand-300 hover:bg-brand-25 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center transition">
+					<Smartphone class="size-7 text-gray-400" aria-hidden="true" />
+					<span class="text-sm font-medium text-gray-700">Imagen para celular <span class="font-normal text-gray-400">(opcional)</span></span>
+					<input type="file" name="movil" accept="image/*" data-ancho="900" class="text-theme-xs mx-auto max-w-full text-gray-500 file:hidden" />
+				</label>
+			</div>
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<Campo etiqueta="Enlace" nombre="enlace" placeholder="/categoria/vestidos" maxlength="200" ayuda="Adónde lleva al tocarlo. Tiene que ser una dirección de tu tienda, empezando con /." />
+				<Campo etiqueta="Descripción de la imagen" nombre="textoAlternativo" maxlength="200" />
+			</div>
+			<div class="flex flex-wrap items-center gap-3">
+				<button class="btn btn-primario"><Upload class="size-4" aria-hidden="true" />Subir banner</button>
+				<span class="text-theme-xs flex items-center gap-1.5 text-gray-500"><CalendarClock class="size-4" aria-hidden="true" />Las fechas se cargan después, al editarlo.</span>
+			</div>
+			<p data-estado class="text-theme-xs text-gray-500" role="status"></p>
+		</form>
+	</Tarjeta>
+</Panel>
+
+<script src="../../scripts/fotos.ts"></script>

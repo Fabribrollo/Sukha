@@ -1,0 +1,23 @@
+---
+// Sección de la portada: título, link "Ver todos" y una grilla de productos. Si no hay productos, no se muestra.
+import type { Tienda, TarjetaDeProducto } from '../../lib/formato';
+import Grilla from './Grilla.astro';
+
+interface Props {
+  titulo: string;
+  href: string;
+  productos: TarjetaDeProducto[];
+  tienda: Tienda;
+}
+const { titulo, href, productos, tienda } = Astro.props;
+---
+
+{productos.length > 0 && (
+	<section class="contenedor mt-12 md:mt-16" aria-labelledby={`sec-${href.replace(/\W/g, '')}`}>
+		<div class="mb-5 flex items-end justify-between gap-4">
+			<h2 id={`sec-${href.replace(/\W/g, '')}`} class="text-xl font-semibold md:text-2xl">{titulo}</h2>
+			<a href={href} class="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 hover:no-underline">Ver todos</a>
+		</div>
+		<Grilla productos={productos} tienda={tienda} />
+	</section>
+)}

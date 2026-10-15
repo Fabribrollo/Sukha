@@ -1,0 +1,33 @@
+---
+// Paginación con números: Anterior, 1 2 3 … y Siguiente. Son links comunes, así que funciona sin JavaScript.
+import { ChevronLeft, ChevronRight } from '@lucide/astro';
+import { conCambios } from '../../lib/listado';
+
+interface Props {
+  pagina: number;
+  total: number;
+  porPagina: number;
+}
+const { pagina, total, porPagina } = Astro.props;
+const paginas = Math.ceil(total / porPagina);
+const hrefDe = (n: number) => conCambios(Astro.url, { pagina: n === 1 ? null : String(n) }, true);
+
+// Siempre la primera, la última y la actual con sus vecinas; lo demás se resume con "…".
+const numeros = [...new Set([1, pagina - 1, pagina, pagina + 1, paginas].filter((n) => n >= 1 && n <= paginas))].sort((a, b) => a - b);
+const items: (number | '…')[] = [];
+numeros.forEach((n, i) => {
+  if (i > 0 && n - numeros[i - 1] > 1) items.push('…');
+  items.push(n);
+});
+const caja = 'rounded-tienda inline-flex size-11 items-center justify-center text-sm';
+---
+
+{paginas > 1 && (
+	<nav aria-label="Paginación" class="mt-10 flex items-center justify-center gap-1">
+		{pagina > 1 ? <a href={hrefDe(pagina - 1)} rel="prev" class={`${caja} border-linea hover:border-texto border`} title="Página anterior" aria-label="Página anterior"><ChevronLeft class="size-5" aria-hidden="true" /></a> : <span class={`${caja} text-suave/40`} aria-hidden="true"><ChevronLeft class="size-5" /></span>}
+		{items.map((n) =>
+			n === '…' ? <span class="text-suave px-1" aria-hidden="true">…</span> : n === pagina ? <span class={`${caja} bg-primario text-primario-texto font-semibold`} aria-current="page" aria-label={`Página ${n}, actual`}>{n}</span> : <a href={hrefDe(n)} class={`${caja} hover:bg-gris`} aria-label={`Ir a la página ${n}`}>{n}</a>,
+		)}
+		{pagina < paginas ? <a href={hrefDe(pagina + 1)} rel="next" class={`${caja} border-linea hover:border-texto border`} title="Página siguiente" aria-label="Página siguiente"><ChevronRight class="size-5" aria-hidden="true" /></a> : <span class={`${caja} text-suave/40`} aria-hidden="true"><ChevronRight class="size-5" /></span>}
+	</nav>
+)}

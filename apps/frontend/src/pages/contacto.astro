@@ -1,0 +1,51 @@
+---
+import { Mail, MapPin, MessageCircle } from '@lucide/astro';
+import IconoInstagram from '../components/tienda/IconoInstagram.astro';
+import Tienda from '../layouts/Tienda.astro';
+import { datosDeLaTienda, enlaceWhatsapp } from '../lib/tienda';
+
+export const prerender = false;
+
+const { tienda } = await datosDeLaTienda(Astro.request);
+const instagram = tienda.instagram.replace(/^@/, '');
+const medios = [
+	tienda.whatsapp && { nombre: 'WhatsApp', detalle: tienda.whatsapp, href: enlaceWhatsapp(tienda.whatsapp), Icono: MessageCircle, externo: true },
+	instagram && { nombre: 'Instagram', detalle: `@${instagram}`, href: `https://instagram.com/${encodeURIComponent(instagram)}`, Icono: IconoInstagram, externo: true },
+	tienda.emailContacto && { nombre: 'Email', detalle: tienda.emailContacto, href: `mailto:${tienda.emailContacto}`, Icono: Mail, externo: false },
+].filter(Boolean) as { nombre: string; detalle: string; href: string; Icono: any; externo: boolean }[];
+---
+
+<Tienda titulo="Contacto" descripcion="Escribinos por WhatsApp, Instagram o email: te respondemos a la brevedad.">
+	<div class="contenedor max-w-2xl py-8 md:py-12">
+		<h1 class="mb-2 text-2xl font-semibold md:text-3xl">Contacto</h1>
+		<p class="text-suave mb-8 text-sm">Escribinos por el medio que te quede más cómodo.</p>
+		<ul class="grid gap-3 sm:grid-cols-2">
+			{
+				medios.map((m) => (
+					<li>
+						<a href={m.href} target={m.externo ? '_blank' : undefined} rel={m.externo ? 'noopener' : undefined} class="border-linea rounded-tienda hover:bg-gris flex min-h-16 items-center gap-4 border p-4">
+							<m.Icono class="size-6 shrink-0" aria-hidden="true" />
+							<span class="min-w-0">
+								<span class="block font-medium">{m.nombre}</span>
+								<span class="text-suave block truncate text-sm">{m.detalle}</span>
+							</span>
+						</a>
+					</li>
+				))
+			}
+			{
+				tienda.retiro && (
+					<li class="border-linea rounded-tienda flex min-h-16 items-center gap-4 border p-4 sm:col-span-2">
+						<MapPin class="size-6 shrink-0" aria-hidden="true" />
+						<span>
+							<span class="block font-medium">Retiro en persona</span>
+							<span class="text-suave block text-sm">{tienda.retiro.direccion}</span>
+							<span class="text-suave block text-sm">{tienda.retiro.horario}</span>
+						</span>
+					</li>
+				)
+			}
+		</ul>
+		{medios.length === 0 && !tienda.retiro && <p class="text-suave">Pronto vas a encontrar acá nuestros medios de contacto.</p>}
+	</div>
+</Tienda>

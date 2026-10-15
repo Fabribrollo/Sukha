@@ -1,0 +1,20 @@
+---
+// Insignia de color (badge de TailAdmin). El ícono va en el slot, antes del texto.
+export type ColorInsignia = 'gris' | 'verde' | 'rojo' | 'ambar' | 'azul' | 'celeste' | 'violeta';
+interface Props {
+  color?: ColorInsignia;
+  class?: string;
+}
+const { color = 'gris', class: clase } = Astro.props;
+const COLORES: Record<ColorInsignia, string> = {
+  gris: 'bg-gray-100 text-gray-700',
+  verde: 'bg-success-50 text-success-700',
+  rojo: 'bg-error-50 text-error-700',
+  ambar: 'bg-warning-50 text-warning-700',
+  azul: 'bg-brand-50 text-brand-600',
+  celeste: 'bg-blue-light-50 text-blue-light-600',
+  violeta: 'bg-purple-50 text-purple-600',
+};
+---
+
+<span class:list={['text-theme-xs inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium whitespace-nowrap [&>svg]:size-3.5', COLORES[color], clase]}><slot /></span>

@@ -1,0 +1,305 @@
+---
+import { Camera, CircleCheck, CircleDashed, Copy, Eye, EyeOff, History, ImagePlus, Layers, PackagePlus, Pause, Pencil, Play, Plus, Save, SlidersHorizontal, Star, Store, Tag, Trash2, GripVertical } from '@lucide/astro';
+import Campo from '../../../components/panel/Campo.astro';
+import Insignia from '../../../components/panel/Insignia.astro';
+import Interruptor from '../../../components/panel/Interruptor.astro';
+import Tarjeta from '../../../components/panel/Tarjeta.astro';
+import Vacio from '../../../components/panel/Vacio.astro';
+import Panel from '../../../layouts/Panel.astro';
+import { api, leer } from '../../../lib/api';
+import { ESTADOS_PRODUCTO, categoriasParaElegir, MOVIMIENTOS, centavos, enCampo, entero, errorDe, fecha, foto, marcado, txt } from '../../../lib/panel';
+
+export const prerender = false;
+
+const id = Astro.params.id;
+const ruta = `/api/admin/productos/${id}`;
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const accion = f.get('accion');
+  let r: Response | null = null;
+
+  if (accion === 'datos') {
+    const precio = centavos(f, 'precio');
+    const oferta = centavos(f, 'oferta');
+    if (!precio || Number.isNaN(oferta)) error = 'Revisá los precios: van en pesos, por ejemplo 18500 o 18.500,50.';
+    else {
+      r = await api(Astro.request, ruta, {
+        nombre: txt(f, 'nombre'),
+        categoriaId: entero(f, 'categoriaId'),
+        descripcion: txt(f, 'descripcion'),
+        material: txt(f, 'material'),
+        cuidados: txt(f, 'cuidados'),
+        precioCentavos: precio,
+        precioOfertaCentavos: oferta,
+        pesoGramos: entero(f, 'pesoGramos'),
+        destacado: marcado(f, 'destacado'),
+        coleccionIds: f.getAll('coleccion').map(Number),
+      }, 'PATCH');
+    }
+  } else if (accion === 'estado') {
+    r = await api(Astro.request, ruta, { estado: f.get('estado') }, 'PATCH');
+  } else if (accion === 'duplicar') {
+    r = await api(Astro.request, `${ruta}/duplicar`, {});
+    if (r.ok) return Astro.redirect(`/admin/productos/${((await r.json()) as any).id}?ok`, 303);
+  } else if (accion === 'variante') {
+    r = await api(Astro.request, `${ruta}/variantes`, { talleId: entero(f, 'talleId'), colorId: entero(f, 'colorId'), stock: entero(f, 'stock') ?? 0 });
+  } else if (accion === 'activa') {
+    r = await api(Astro.request, `/api/admin/variantes/${f.get('varianteId')}`, { activa: f.get('valor') === '1' }, 'PATCH');
+  } else if (accion === 'stock') {
+    // El tipo de movimiento viene del botón que se tocó: entra stock, venta en el local o ajuste.
+    r = await api(Astro.request, `/api/admin/variantes/${f.get('varianteId')}/stock`, { tipo: f.get('tipo'), cantidad: entero(f, 'cantidad'), nota: txt(f, 'nota') });
+  } else if (accion === 'foto') {
+    r = await api(Astro.request, `/api/admin/imagenes/${f.get('imagenId')}`, { textoAlternativo: txt(f, 'textoAlternativo'), colorId: entero(f, 'colorId') ?? null }, 'PATCH');
+  } else if (accion === 'borrarFoto') {
+    r = await api(Astro.request, `/api/admin/imagenes/${f.get('imagenId')}`, undefined, 'DELETE');
+  }
+
+  if (r?.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  if (r) error = await errorDe(r);
+}
+
+const respuesta = await api(Astro.request, ruta);
+if (respuesta.status === 404) return Astro.redirect('/admin/productos');
+const p = (await respuesta.json()) as any;
+const [categorias, colecciones, opciones, sugeridos] = await Promise.all([
+  leer<any[]>(Astro.request, '/api/admin/categorias'),
+  leer<any[]>(Astro.request, '/api/admin/colecciones'),
+  leer<{ talles: any[]; colores: any[] }>(Astro.request, '/api/admin/opciones'),
+  leer<{ materiales: string[]; cuidados: string[] }>(Astro.request, '/api/admin/productos/sugerencias'),
+]);
+// Opciones de material y cuidados: lo ya usado en otros productos, más el valor actual de este.
+const conActual = (lista: string[], actual: string | null) => (actual && !lista.includes(actual) ? [actual, ...lista] : lista);
+// El libro de movimientos se muestra de a una variante, con ?movimientos=ID.
+const verMovimientos = Number(Astro.url.searchParams.get('movimientos')) || null;
+const movimientos = verMovimientos ? await leer<any[]>(Astro.request, `/api/admin/variantes/${verMovimientos}/movimientos`) : [];
+const stockTotal = p.variantes.filter((v: any) => v.activa).reduce((s: number, v: any) => s + v.stock, 0);
+const colorDe = (colorId: number | null) => opciones.colores.find((c) => c.id === colorId);
+// Las fotos se muestran según el color que elige la clienta: las opciones son los colores de las variantes de este producto,
+// con los talles que tiene cada uno.
+const variantesParaFoto = [...new Set(p.variantes.map((v: any) => v.colorId).filter(Boolean))].map((colorId) => ({
+  id: colorId as number,
+  texto: `${colorDe(colorId as number)?.nombre ?? 'Color'}${(() => { const t = p.variantes.filter((v: any) => v.colorId === colorId && v.talle).map((v: any) => v.talle); return t.length ? ` (${t.join(', ')})` : ''; })()}`,
+}));
+// Si una foto quedó con un color que el producto ya no tiene, se conserva como opción para no perderla sin querer.
+const opcionesFoto = (actual: number | null) =>
+  actual && !variantesParaFoto.some((v) => v.id === actual) ? [...variantesParaFoto, { id: actual, texto: `${colorDe(actual)?.nombre ?? 'Color'} (sin variantes)` }] : variantesParaFoto;
+const publicado = p.estado === 'publicado';
+const colorEstado: Record<string, any> = { publicado: 'verde', borrador: 'ambar', oculto: 'gris' };
+// Lo que hace falta para poder publicar.
+const requisitos = [
+  { listo: stockTotal > 0, texto: 'Variante con stock' },
+  { listo: p.imagenes.length > 0, texto: 'Al menos una foto' },
+];
+---
+
+<Panel titulo={p.nombre} error={error} volver={{ href: '/admin/productos', texto: 'Productos' }}>
+	<Fragment slot="acciones">
+		<Insignia color={colorEstado[p.estado]}>{ESTADOS_PRODUCTO[p.estado]}</Insignia>
+		<form method="post">
+			<input type="hidden" name="accion" value="estado" /><input type="hidden" name="estado" value={publicado ? 'oculto' : 'publicado'} />
+			{publicado
+				? <button class="btn btn-secundario"><EyeOff class="size-4" aria-hidden="true" />Ocultar</button>
+				: <button class="btn btn-primario"><Eye class="size-4" aria-hidden="true" />Publicar</button>}
+		</form>
+		<form method="post">
+			<input type="hidden" name="accion" value="duplicar" />
+			<button class="btn-icono ring-1 ring-gray-300" title="Duplicar producto" aria-label="Duplicar producto"><Copy class="size-4" aria-hidden="true" /></button>
+		</form>
+	</Fragment>
+
+	{!publicado && (
+		<ul class="flex flex-wrap gap-2">
+			{requisitos.map((r) => (
+				<li><Insignia color={r.listo ? 'verde' : 'gris'}>{r.listo ? <CircleCheck aria-hidden="true" /> : <CircleDashed aria-hidden="true" />}{r.texto}</Insignia></li>
+			))}
+		</ul>
+	)}
+
+	<Tarjeta titulo="Datos">
+		<Tag slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		<form method="post" class="space-y-5">
+			<input type="hidden" name="accion" value="datos" />
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<Campo etiqueta="Nombre" nombre="nombre" valor={p.nombre} required maxlength="120" />
+				<Campo etiqueta="Categoría" nombre="categoriaId" tipo="select" data-combo data-crear="/api/admin/categorias">
+					{categoriasParaElegir(categorias).map((c) => <option value={c.id} selected={c.id === p.categoriaId}>{c.etiqueta}</option>)}
+				</Campo>
+			</div>
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+				<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" valor={enCampo(p.precioCentavos)} required />
+				<Campo etiqueta="Precio de oferta" nombre="oferta" prefijo="$" inputmode="decimal" valor={enCampo(p.precioOfertaCentavos)} ayuda="Si lo completás, se cobra este y el precio normal se muestra tachado. Vacío = sin oferta." />
+				<Campo etiqueta="Peso (g)" nombre="pesoGramos" inputmode="numeric" valor={p.pesoGramos} />
+			</div>
+			<Campo etiqueta="Descripción" nombre="descripcion" tipo="area" valor={p.descripcion} maxlength="5000" />
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<Campo etiqueta="Material" nombre="material" tipo="select" data-combo data-libre>
+					<option value="">Sin especificar</option>
+					{conActual(sugeridos.materiales, p.material).map((m) => <option value={m} selected={m === p.material}>{m}</option>)}
+				</Campo>
+				<Campo etiqueta="Cuidados" nombre="cuidados" tipo="select" data-combo data-libre>
+					<option value="">Sin especificar</option>
+					{conActual(sugeridos.cuidados, p.cuidados).map((c) => <option value={c} selected={c === p.cuidados}>{c}</option>)}
+				</Campo>
+			</div>
+			<div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+				<label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 select-none">
+					<input type="checkbox" name="destacado" checked={p.destacado === 1} class="peer sr-only" />
+					<Star class="peer-checked:fill-warning-500 peer-checked:text-warning-500 peer-focus-visible:ring-brand-500/30 size-6 rounded text-gray-300 peer-focus-visible:ring-3" aria-hidden="true" />
+					Destacado en la portada
+				</label>
+				{colecciones.map((c) => (
+					<label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 select-none">
+						<input type="checkbox" name="coleccion" value={c.id} checked={p.coleccionIds.includes(c.id)} class="text-brand-500 focus:ring-brand-500/30 size-4 rounded border-gray-300" />
+						{c.nombre}
+					</label>
+				))}
+			</div>
+			<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+		</form>
+	</Tarjeta>
+
+	<Tarjeta titulo="Talles, colores y stock" alRas>
+		<Layers slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		<Insignia slot="acciones" color={stockTotal > 0 ? 'azul' : 'rojo'}>{stockTotal} en stock</Insignia>
+		{p.variantes.length === 0 ? <Vacio texto="Agregá la primera combinación de talle y color"><Layers aria-hidden="true" /></Vacio> : (
+			<div class="overflow-x-auto">
+				<table class="min-w-full">
+					<thead class="border-b border-gray-100">
+						<tr><th class="th">Variante</th><th class="th num">Stock</th><th class="th">Mover stock</th><th class="th"><span class="sr-only">Acciones</span></th></tr>
+					</thead>
+					<tbody class="divide-y divide-gray-100">
+						{p.variantes.map((v: any) => (
+							<tr class:list={[!v.activa && 'bg-gray-50 opacity-70']}>
+								<td class="td">
+									<span class="flex items-center gap-2 font-medium whitespace-nowrap text-gray-800">
+										{v.colorId && <span class="size-4 shrink-0 rounded-full border border-gray-200" style={`background:${colorDe(v.colorId)?.hex ?? 'transparent'}`} aria-hidden="true"></span>}
+										{[v.talle, v.color].filter(Boolean).join(' · ') || 'Única'}
+									</span>
+									<span class="text-theme-xs text-gray-400">{v.sku}</span>
+								</td>
+								<td class="td num">
+									{!v.activa ? <Insignia>Pausada</Insignia> : v.stock === 0 ? <Insignia color="rojo">0</Insignia> : <span class="text-base font-semibold text-gray-800">{v.stock}</span>}
+								</td>
+								<td class="td">
+									<form method="post" class="flex items-center gap-1.5">
+										<input type="hidden" name="accion" value="stock" /><input type="hidden" name="varianteId" value={v.id} />
+										<input name="cantidad" inputmode="numeric" required aria-label="Cantidad" placeholder="Cant." class="campo h-9 w-20 px-3" />
+										<button name="tipo" value="carga" class="btn-icono text-success-600 hover:bg-success-50 hover:text-success-700" title="Entra stock" aria-label="Entra stock"><PackagePlus class="size-5" aria-hidden="true" /></button>
+										<button name="tipo" value="venta_local" class="btn-icono text-brand-500 hover:bg-brand-50 hover:text-brand-600" title="Venta en el local (descuenta)" aria-label="Venta en el local (descuenta)"><Store class="size-5" aria-hidden="true" /></button>
+										<button name="tipo" value="ajuste" class="btn-icono" title="Ajuste: sumá con 3 o restá con -3" aria-label="Ajuste: sumá con 3 o restá con -3"><SlidersHorizontal class="size-5" aria-hidden="true" /></button>
+									</form>
+								</td>
+								<td class="td">
+									<span class="flex items-center justify-end gap-1">
+										<a href={`?movimientos=${v.id}#movimientos`} class="btn-icono" title="Historial de stock" aria-label="Historial de stock"><History class="size-5" aria-hidden="true" /></a>
+										<form method="post">
+											<input type="hidden" name="accion" value="activa" /><input type="hidden" name="varianteId" value={v.id} /><input type="hidden" name="valor" value={v.activa ? '0' : '1'} />
+											<button class="btn-icono" title={v.activa ? 'Pausar: deja de venderse' : 'Reactivar'} aria-label={v.activa ? 'Pausar: deja de venderse' : 'Reactivar'}>
+												{v.activa ? <Pause class="size-5" aria-hidden="true" /> : <Play class="size-5" aria-hidden="true" />}
+											</button>
+										</form>
+									</span>
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)}
+		<form method="post" class="flex flex-wrap items-end gap-3 border-t border-gray-100 p-5 sm:px-6">
+			<input type="hidden" name="accion" value="variante" />
+			<Campo etiqueta="Talle" nombre="talleId" tipo="select" class="min-w-28 flex-1" data-combo data-crear="/api/admin/talles">
+				<option value="">Sin talle</option>
+				{opciones.talles.map((t) => <option value={t.id}>{t.nombre}</option>)}
+			</Campo>
+			<Campo etiqueta="Color" nombre="colorId" tipo="select" class="min-w-28 flex-1" data-combo data-crear="/api/admin/colores">
+				<option value="">Sin color</option>
+				{opciones.colores.map((c) => <option value={c.id}>{c.nombre}</option>)}
+			</Campo>
+			<Campo etiqueta="Stock" nombre="stock" inputmode="numeric" valor="0" class="w-24" />
+			<button class="btn btn-secundario"><Plus class="size-4" aria-hidden="true" />Agregar</button>
+		</form>
+	</Tarjeta>
+
+	{verMovimientos && (
+		<Tarjeta titulo="Historial de stock" alRas id="movimientos">
+			<History slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<div class="overflow-x-auto">
+				<table class="min-w-full">
+					<tbody class="divide-y divide-gray-100">
+						{movimientos.map((m) => (
+							<tr>
+								<td class="td"><span class="font-medium text-gray-800">{MOVIMIENTOS[m.tipo]}</span>{m.pedido_id && <> · <a href={`/admin/pedidos/${m.pedido_id}`} class="text-brand-500 hover:underline">ver pedido</a></>}<br /><span class="text-theme-xs text-gray-500">{fecha(m.creado_en)}{m.nota ? ` · ${m.nota}` : ''}</span></td>
+								<td class="td num"><Insignia color={m.cantidad > 0 ? 'verde' : 'rojo'}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</Insignia></td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		</Tarjeta>
+	)}
+
+	<Tarjeta titulo="Fotos">
+		<Camera slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		{p.imagenes.length > 1 && <p class="text-theme-xs mb-3 text-gray-500" role="status" data-estado-fotos>Arrastrá las fotos para ordenarlas: la primera es la principal.</p>}
+		<div data-fotos={`/api/admin/productos/${id}/imagenes/orden`} class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+			{p.imagenes.map((img: any, i: number) => (
+				<figure data-id={img.id} class="group relative rounded-xl bg-white">
+					{p.imagenes.length > 1 && (
+						<button type="button" data-asa class="shadow-theme-sm absolute top-2 left-2 z-[1] flex size-9 cursor-grab touch-none items-center justify-center rounded-lg bg-white/90 text-gray-600 hover:bg-white active:cursor-grabbing" title="Arrastrar para ordenar" aria-label={`Ordenar la foto ${i + 1}: arrastrá o usá las flechas`}>
+							<GripVertical class="size-5" aria-hidden="true" />
+						</button>
+					)}
+					{i === 0 && <span data-principal class="text-theme-xs absolute top-2 right-2 z-[1] rounded-full bg-gray-900/80 px-2 py-0.5 font-medium text-white">Principal</span>}
+					<img src={foto(img.clave, 'mediano')} alt={img.textoAlternativo ?? ''} loading="lazy" class="aspect-[3/4] w-full rounded-xl bg-gray-100 object-cover" />
+					<figcaption class="mt-1.5 flex items-center justify-between gap-1">
+						<span class="text-theme-xs flex min-w-0 items-center gap-1.5 text-gray-500">
+							{img.colorId && <span class="size-3 shrink-0 rounded-full border border-gray-200" style={`background:${colorDe(img.colorId)?.hex ?? 'transparent'}`} aria-hidden="true"></span>}
+							<span class="truncate">{colorDe(img.colorId)?.nombre ?? 'General'}</span>
+						</span>
+						<span class="flex shrink-0">
+							<details class="relative">
+								<summary class="btn-icono size-8" title="Editar foto" aria-label="Editar foto"><Pencil class="size-4" aria-hidden="true" /></summary>
+								<form method="post" class="shadow-theme-lg absolute right-0 bottom-10 z-10 w-60 space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+									<input type="hidden" name="accion" value="foto" /><input type="hidden" name="imagenId" value={img.id} />
+									<Campo etiqueta="Variante de la foto" nombre="colorId" tipo="select">
+										<option value="">General</option>
+										{opcionesFoto(img.colorId).map((v) => <option value={v.id} selected={v.id === img.colorId}>{v.texto}</option>)}
+									</Campo>
+									<Campo etiqueta="Descripción" nombre="textoAlternativo" valor={img.textoAlternativo} maxlength="200" ayuda="Qué se ve en la foto. La usan los lectores de pantalla y Google." />
+									
+									<button class="btn btn-primario w-full"><Save class="size-4" aria-hidden="true" />Guardar</button>
+								</form>
+							</details>
+							<form method="post">
+								<input type="hidden" name="accion" value="borrarFoto" /><input type="hidden" name="imagenId" value={img.id} />
+								<button class="btn-icono hover:bg-error-50 hover:text-error-600 size-8" title="Borrar foto" aria-label="Borrar foto"><Trash2 class="size-4" aria-hidden="true" /></button>
+							</form>
+						</span>
+					</figcaption>
+				</figure>
+			))}
+		</div>
+
+		<form data-subida={`/api/admin/productos/${id}/imagenes`} data-auto data-tamanos='{"chico":400,"mediano":900,"grande":1600}' class:list={['space-y-4', p.imagenes.length > 0 && 'mt-6 border-t border-gray-100 pt-6']}>
+			<Campo etiqueta="Variante de la foto" nombre="colorId" tipo="select" ayuda="Elegila antes de subir. Son las variantes que creaste en este producto: la foto se muestra cuando la clienta elige ese color. «General» se ve siempre.">
+				<option value="">General</option>
+				{variantesParaFoto.map((v) => <option value={v.id}>{v.texto}</option>)}
+			</Campo>
+			{variantesParaFoto.length === 0 && <p class="text-theme-xs -mt-2 text-gray-500">Este producto todavía no tiene variantes con color. Creá las variantes arriba para poder asignarles fotos.</p>}
+		<label class="hover:border-brand-300 hover:bg-brand-25 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center transition" data-zona>
+			<ImagePlus class="size-8 text-gray-400" aria-hidden="true" />
+			<span class="text-sm font-medium text-gray-700">Elegir fotos o arrastrarlas hasta acá</span>
+			<span class="text-theme-xs text-gray-500">Se suben solas apenas las elegís.</span>
+			<input type="file" name="foto" accept="image/*" multiple required class="sr-only" />
+		</label>
+		<p data-estado class="text-theme-xs text-gray-500" role="status"></p>
+		</form>
+	</Tarjeta>
+</Panel>
+
+<script src="../../../scripts/fotos.ts"></script>
+<script src="../../../scripts/ordenar-fotos.ts"></script>
+<script src="../../../scripts/combo.ts"></script>

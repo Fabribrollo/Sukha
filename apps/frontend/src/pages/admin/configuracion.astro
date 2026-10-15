@@ -1,0 +1,134 @@
+---
+import { Bell, CreditCard, FileText, Megaphone, Save, Store, Timer } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { errorDe } from '../../lib/panel';
+
+export const prerender = false;
+
+// Cada campo: clave en la configuración, etiqueta, tipo y ayuda (que se muestra detrás de una "i"). El backend valida cada valor.
+type Campo_ = { clave: string; etiqueta: string; tipo: 'texto' | 'numero' | 'casilla' | 'largo'; ayuda?: string; prefijo?: string; ejemplo?: string };
+const GRUPOS: { titulo: string; icono: any; ancho?: boolean; campos: Campo_[] }[] = [
+  {
+    titulo: 'Pagos',
+    icono: CreditCard,
+    campos: [
+      { clave: 'alias_transferencia', etiqueta: 'Alias para transferencias', tipo: 'texto' },
+      { clave: 'titular_transferencia', etiqueta: 'Titular de la cuenta', tipo: 'texto' },
+      { clave: 'descuento_transferencia_porcentaje', etiqueta: 'Descuento por transferencia', tipo: 'numero', prefijo: '%', ayuda: '0 = sin descuento.' },
+      { clave: 'cuotas_sin_interes', etiqueta: 'Cuotas sin interés', tipo: 'casilla', ayuda: 'El costo de las cuotas lo absorbés vos en Mercado Pago.' },
+      { clave: 'cuotas_cantidad', etiqueta: 'Cantidad de cuotas a mostrar', tipo: 'numero', ayuda: 'Solo se muestran si activaste las cuotas sin interés.' },
+    ],
+  },
+  {
+    titulo: 'Reserva de stock',
+    icono: Timer,
+    campos: [
+      { clave: 'reserva_mercado_pago_minutos', etiqueta: 'Minutos para pagar con Mercado Pago', tipo: 'numero', ayuda: 'Pasado ese tiempo sin pago, el pedido se cancela solo y el stock vuelve.' },
+      { clave: 'reserva_transferencia_horas', etiqueta: 'Horas para transferir', tipo: 'numero', ayuda: 'Pasado ese tiempo sin pago, el pedido se cancela solo y el stock vuelve.' },
+      { clave: 'max_unidades_por_pedido', etiqueta: 'Prendas máximas por pedido', tipo: 'numero' },
+      { clave: 'max_pedidos_pendientes', etiqueta: 'Pedidos sin pagar por persona', tipo: 'numero', ayuda: 'Cuántos pedidos sin pagar puede tener abiertos una misma persona. Evita que alguien bloquee tu stock.' },
+    ],
+  },
+  {
+    titulo: 'Retiro en persona',
+    icono: Store,
+    campos: [
+      { clave: 'retiro_habilitado', etiqueta: 'Ofrecer retiro', tipo: 'casilla' },
+      { clave: 'retiro_direccion', etiqueta: 'Dirección', tipo: 'texto' },
+      { clave: 'retiro_horario', etiqueta: 'Días y horarios', tipo: 'texto', ejemplo: 'Lunes a viernes de 10 a 18' },
+    ],
+  },
+  {
+    titulo: 'Tienda',
+    icono: Megaphone,
+    campos: [
+      { clave: 'barra_anuncios', etiqueta: 'Barra de anuncios', tipo: 'texto', ejemplo: 'Envío gratis desde $100.000', ayuda: 'El cartel que va arriba de todo. Vacío = no se muestra.' },
+      { clave: 'whatsapp', etiqueta: 'WhatsApp', tipo: 'texto', ejemplo: '+5493510000000', ayuda: 'Con código de país, solo números.' },
+      { clave: 'instagram', etiqueta: 'Instagram', tipo: 'texto', prefijo: '@' },
+      { clave: 'email_contacto', etiqueta: 'Email de contacto', tipo: 'texto', ayuda: 'El que ven las clientas en la tienda. Distinto del email donde recibís los avisos.' },
+      { clave: 'datos_legales', etiqueta: 'Datos legales', tipo: 'largo', ayuda: 'Razón social, CUIT y domicilio. Van al pie de la tienda.' },
+      { clave: 'ultimas_unidades_umbral', etiqueta: '"Últimas unidades" desde', tipo: 'numero', ayuda: 'Con este stock o menos, la ficha avisa que quedan pocas.' },
+    ],
+  },
+  {
+    titulo: 'Avisos para vos',
+    icono: Bell,
+    campos: [
+      { clave: 'email_avisos', etiqueta: 'Email de avisos', tipo: 'texto', ayuda: 'Ahí te llega cada venta, transferencia por confirmar, pago a revisar y post-venta. Vacío = sin avisos.' },
+      { clave: 'stock_bajo_umbral', etiqueta: 'Stock bajo desde', tipo: 'numero', ayuda: 'Con este stock o menos, el producto aparece en "Stock bajo" del inicio.' },
+    ],
+  },
+  {
+    titulo: 'Textos de la tienda',
+    icono: FileText,
+    ancho: true,
+    campos: [
+      { clave: 'contenido_quienes_somos', etiqueta: 'Quiénes somos', tipo: 'largo' },
+      { clave: 'contenido_preguntas_frecuentes', etiqueta: 'Preguntas frecuentes', tipo: 'largo', ayuda: 'Una pregunta por bloque: la primera línea es la pregunta y las siguientes, la respuesta. Dejá una línea en blanco entre preguntas.' },
+      { clave: 'contenido_politica_cambios', etiqueta: 'Cambios y devoluciones', tipo: 'largo' },
+    ],
+  },
+];
+
+// Las preguntas frecuentes se guardan como lista de { pregunta, respuesta } para que la tienda las pueda mostrar plegables.
+const aPreguntas = (texto: string) =>
+  texto.split(/\r?\n\s*\r?\n/).map((bloque) => bloque.trim()).filter(Boolean).map((bloque) => {
+    const [pregunta, ...resto] = bloque.split(/\r?\n/);
+    return { pregunta: pregunta.trim(), respuesta: resto.join('\n').trim() };
+  });
+const dePreguntas = (valor: unknown) =>
+  Array.isArray(valor) ? valor.map((p: any) => `${p.pregunta}\n${p.respuesta}`).join('\n\n') : typeof valor === 'string' ? valor : '';
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const grupo = GRUPOS.find((g) => g.titulo === f.get('grupo'));
+  for (const campo of grupo?.campos ?? []) {
+    const crudo = String(f.get(campo.clave) ?? '').trim();
+    const valor =
+      campo.tipo === 'casilla' ? f.get(campo.clave) !== null
+      : campo.tipo === 'numero' ? Number(crudo)
+      : campo.clave === 'contenido_preguntas_frecuentes' ? aPreguntas(crudo)
+      : crudo;
+    const r = await api(Astro.request, `/api/admin/configuracion/${campo.clave}`, { valor }, 'PUT');
+    if (!r.ok) {
+      error = `${campo.etiqueta}: ${(await errorDe(r)).replace(/^[a-z_]+: /, '')}`;
+      break;
+    }
+  }
+  if (!error) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+}
+
+const config = await leer<Record<string, unknown>>(Astro.request, '/api/admin/configuracion');
+const texto = (c: Campo_) => (c.clave === 'contenido_preguntas_frecuentes' ? dePreguntas(config[c.clave]) : String(config[c.clave] ?? ''));
+---
+
+<Panel titulo="Configuración" error={error}>
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+		{GRUPOS.map((g) => {
+			const Icono = g.icono;
+			return (
+				<Tarjeta titulo={g.titulo} class={g.ancho ? 'lg:col-span-2' : ''}>
+					<Icono slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+					<form method="post" class="space-y-4">
+						<input type="hidden" name="grupo" value={g.titulo} />
+						{g.campos.map((c) =>
+							c.tipo === 'casilla' ? (
+								<Interruptor etiqueta={c.etiqueta} nombre={c.clave} marcado={config[c.clave] === true} ayuda={c.ayuda} />
+							) : c.tipo === 'largo' ? (
+								<Campo etiqueta={c.etiqueta} nombre={c.clave} tipo="area" valor={texto(c)} ayuda={c.ayuda} rows="6" />
+							) : (
+								<Campo etiqueta={c.etiqueta} nombre={c.clave} valor={texto(c)} ayuda={c.ayuda} prefijo={c.prefijo} placeholder={c.ejemplo} inputmode={c.tipo === 'numero' ? 'numeric' : undefined} />
+							),
+						)}
+						<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+					</form>
+				</Tarjeta>
+			);
+		})}
+	</div>
+</Panel>

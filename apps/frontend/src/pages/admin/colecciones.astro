@@ -1,0 +1,180 @@
+---
+import { Check, ChevronDown, ImageOff, PackagePlus, Plus, Save, Search, Sparkles, X } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { ESTADOS_PRODUCTO, entero, errorDe, foto, marcado, pesos, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const accion = f.get('accion');
+  const id = f.get('id');
+  let r: Response;
+  if (accion === 'coleccionProducto') {
+    const coleccionId = f.get('coleccionId');
+    const rutaColeccion = `/api/admin/colecciones/${coleccionId}/productos`;
+    const elegidos = f.getAll('productoId').map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    if (f.get('modo') === 'quitar') r = await api(Astro.request, `${rutaColeccion}/${elegidos[0]}`, undefined, 'DELETE');
+    else if (elegidos.length === 0) r = new Response(JSON.stringify({ error: 'Elegí al menos un producto.' }), { status: 400 });
+    else r = await api(Astro.request, rutaColeccion, { productoIds: elegidos });
+    // Vuelve a la misma colección, abierta, para seguir agregando.
+    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok&abierta=${coleccionId}#coleccion-${coleccionId}`, 303);
+  } else {
+    const datos = { nombre: txt(f, 'nombre'), ...(id ? { activa: marcado(f, 'activa') } : {}) };
+    r = id ? await api(Astro.request, `/api/admin/colecciones/${id}`, datos, 'PATCH') : await api(Astro.request, '/api/admin/colecciones', datos);
+    if (r.ok) return Astro.redirect(id ? `${Astro.url.pathname}?ok&abierta=${id}#coleccion-${id}` : `${Astro.url.pathname}?ok`, 303);
+  }
+  error = await errorDe(r);
+}
+
+const [colecciones, productos] = await Promise.all([
+  leer<any[]>(Astro.request, '/api/admin/colecciones'),
+  leer<any[]>(Astro.request, '/api/admin/productos'),
+]);
+const abierta = Number(Astro.url.searchParams.get('abierta')) || null;
+const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'verde', borrador: 'gris', oculto: 'ambar' };
+---
+
+<Panel titulo="Colecciones" error={error}>
+	<div class="max-w-4xl">
+		<Tarjeta titulo="Colecciones" alRas>
+			<Sparkles slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			{colecciones.length === 0 && <Vacio texto="Verano, ofertas, nueva temporada…"><Sparkles aria-hidden="true" /></Vacio>}
+			<ul class="divide-y divide-gray-100">
+				{colecciones.map((c) => {
+					const dentro = productos.filter((p) => c.productoIds.includes(p.id));
+					const disponibles = productos.filter((p) => !c.productoIds.includes(p.id));
+					return (
+						<li id={`coleccion-${c.id}`}>
+							<details class="group" open={abierta === c.id}>
+								<summary class="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 hover:bg-gray-50 sm:px-6 [&::-webkit-details-marker]:hidden">
+									<span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{c.nombre}</span>
+									{c.activa !== 1 && <Insignia>Oculta</Insignia>}
+									<span class="text-theme-xs text-gray-500">{dentro.length} {dentro.length === 1 ? 'producto' : 'productos'}</span>
+									<ChevronDown class="size-4 shrink-0 text-gray-400 transition group-open:rotate-180" aria-hidden="true" />
+								</summary>
+
+								<div class="space-y-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4 sm:px-6">
+									<form method="post" class="flex items-center gap-3">
+										<input type="hidden" name="accion" value="coleccion" /><input type="hidden" name="id" value={c.id} />
+										<input name="nombre" value={c.nombre} required maxlength="60" aria-label="Nombre de la colección" class="campo h-10 flex-1" />
+										<Interruptor etiqueta="Visible" nombre="activa" marcado={c.activa === 1} />
+										<button class="btn-icono" title="Guardar" aria-label="Guardar colección"><Save class="size-5" aria-hidden="true" /></button>
+									</form>
+
+									<section aria-label={`Productos de ${c.nombre}`}>
+										<h3 class="mb-2 text-sm font-medium text-gray-800">En esta colección ({dentro.length})</h3>
+										{dentro.length === 0 && <p class="text-theme-xs text-gray-500">Todavía no tiene productos. Agregá desde la lista de abajo.</p>}
+										<ul class="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white empty:hidden">
+											{dentro.map((p) => (
+												<li class="flex items-center gap-3 px-3 py-2">
+													{foto(p.foto) ? <img src={foto(p.foto)!} alt="" loading="lazy" class="size-10 shrink-0 rounded-lg bg-gray-100 object-cover" /> : <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400"><ImageOff class="size-4" aria-hidden="true" /></span>}
+													<span class="min-w-0 flex-1"><span class="block truncate text-sm text-gray-800">{p.nombre}</span><span class="text-theme-xs block text-gray-500">{p.categoria}</span></span>
+													<Insignia color={ESTADO_COLOR[p.estado] ?? 'gris'}>{ESTADOS_PRODUCTO[p.estado] ?? p.estado}</Insignia>
+													<form method="post">
+														<input type="hidden" name="accion" value="coleccionProducto" /><input type="hidden" name="modo" value="quitar" />
+														<input type="hidden" name="coleccionId" value={c.id} /><input type="hidden" name="productoId" value={p.id} />
+														<button class="btn-icono hover:bg-error-50 hover:text-error-600" title="Quitar de la colección" aria-label={`Quitar ${p.nombre} de la colección`}><X class="size-4" aria-hidden="true" /></button>
+													</form>
+												</li>
+											))}
+										</ul>
+									</section>
+
+									<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-3">
+										<p class="text-theme-sm text-gray-600">{disponibles.length === 0 ? 'Todos tus productos ya están en esta colección.' : `${disponibles.length} ${disponibles.length === 1 ? 'producto disponible' : 'productos disponibles'} para agregar.`}</p>
+										<button type="button" data-agregar={JSON.stringify({ id: c.id, nombre: c.nombre, dentro: c.productoIds })} disabled={disponibles.length === 0} class="btn btn-primario"><PackagePlus class="size-4" aria-hidden="true" />Agregar productos</button>
+									</div>
+								</div>
+							</details>
+						</li>
+					);
+				})}
+			</ul>
+			<form method="post" class="flex items-end gap-3 border-t border-gray-100 p-5 sm:px-6">
+				<input type="hidden" name="accion" value="coleccion" />
+				<Campo etiqueta="Nueva colección" nombre="nombre" required maxlength="60" class="flex-1" />
+				<button class="btn btn-primario" title="Agregar colección" aria-label="Agregar colección"><Plus class="size-4" aria-hidden="true" /></button>
+			</form>
+		</Tarjeta>
+	</div>
+
+	<dialog id="agregar-productos" class="m-auto h-[90vh] w-[calc(100%-1.5rem)] max-w-5xl overflow-hidden rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="agregar-productos-titulo">
+		<form method="post" class="flex h-full min-h-0 flex-col">
+			<input type="hidden" name="accion" value="coleccionProducto" /><input type="hidden" name="modo" value="agregar" /><input type="hidden" name="coleccionId" />
+			<header class="flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+				<h2 id="agregar-productos-titulo" class="min-w-0 truncate text-base font-medium text-gray-800">Agregar productos a «<span data-titulo></span>»</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</header>
+
+			<div class="grid grid-cols-2 gap-2 border-b border-gray-200 bg-gray-50/60 px-4 py-3 sm:gap-3 sm:px-5 lg:grid-cols-[1fr_11rem_10rem_11rem]">
+				<label class="relative col-span-2 block lg:col-span-1">
+					<span class="sr-only">Buscar producto</span>
+					<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+					<input type="search" data-buscar placeholder="Buscar por nombre…" class="campo h-10 pl-10 text-sm" />
+				</label>
+				<label><span class="sr-only">Categoría</span>
+					<select data-categoria class="campo h-10 text-sm"><option value="">Todas las categorías</option>{[...new Set(productos.map((p) => p.categoria))].sort((a, b) => a.localeCompare(b, 'es')).map((c) => <option value={c}>{c}</option>)}</select>
+				</label>
+				<label><span class="sr-only">Estado</span>
+					<select data-estado class="campo h-10 text-sm"><option value="">Todos los estados</option>{Object.entries(ESTADOS_PRODUCTO).map(([clave, texto]) => <option value={clave}>{texto}</option>)}</select>
+				</label>
+				<label class="col-span-2 lg:col-span-1"><span class="sr-only">Ordenar por</span>
+					<select data-orden class="campo h-10 text-sm">
+						<option value="nuevos">Más nuevos</option>
+						<option value="az">Nombre A–Z</option>
+						<option value="za">Nombre Z–A</option>
+						<option value="precio_asc">Menor precio</option>
+						<option value="precio_desc">Mayor precio</option>
+						<option value="stock">Más stock</option>
+					</select>
+				</label>
+			</div>
+
+			<div class="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-2.5 text-sm">
+				<label class="flex cursor-pointer items-center gap-2.5 text-gray-700 select-none">
+					<input type="checkbox" data-todos class="size-4 rounded border-gray-300 accent-[var(--color-brand-500)]" />
+					Seleccionar todos los que se ven
+				</label>
+				<span class="text-theme-xs text-gray-500" data-visibles role="status"></span>
+			</div>
+
+			<ul data-productos class="grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto p-4 sm:grid-cols-4 sm:p-5 lg:grid-cols-5">
+				{productos.map((p, i) => (
+					<li data-id={p.id} data-nombre={p.nombre.toLowerCase()} data-categoria={p.categoria} data-estado={p.estado} data-precio={p.precioOfertaCentavos ?? p.precioCentavos} data-stock={p.stock} data-posicion={i}>
+						<label class="group has-[:checked]:border-brand-500 has-[:checked]:ring-brand-500/30 relative block h-full cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300 has-[:checked]:ring-2 has-[:focus-visible]:ring-2">
+							<input type="checkbox" name="productoId" value={p.id} class="sr-only" />
+							<span class="relative block aspect-[3/4] bg-gray-100">
+								{foto(p.foto, 'mediano') ? <img src={foto(p.foto, 'mediano')!} alt="" loading="lazy" class="size-full object-cover" /> : <span class="flex size-full items-center justify-center text-gray-400"><ImageOff class="size-6" aria-hidden="true" /></span>}
+								<span class="group-has-[:checked]:bg-brand-500 group-has-[:checked]:border-brand-500 absolute top-2 left-2 flex size-6 items-center justify-center rounded-md border-2 border-white bg-gray-900/30 text-white shadow-sm"><Check class="size-4 opacity-0 group-has-[:checked]:opacity-100" aria-hidden="true" /></span>
+								<span class="absolute right-2 bottom-2"><Insignia color={ESTADO_COLOR[p.estado] ?? 'gris'}>{ESTADOS_PRODUCTO[p.estado] ?? p.estado}</Insignia></span>
+							</span>
+							<span class="block space-y-0.5 px-3 py-2.5">
+								<span class="block truncate text-sm font-medium text-gray-800">{p.nombre}</span>
+								<span class="text-theme-xs block truncate text-gray-500">{p.categoria}</span>
+								<span class="text-theme-xs flex items-center justify-between text-gray-600"><span class="font-medium">{pesos(p.precioOfertaCentavos ?? p.precioCentavos)}</span><span>{p.stock} en stock</span></span>
+							</span>
+						</label>
+					</li>
+				))}
+			</ul>
+			<p data-vacio hidden class="flex-1 p-10 text-center text-sm text-gray-500">Ningún producto coincide con lo que buscás.</p>
+
+			<footer class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-5 py-4">
+				<span class="text-sm font-medium text-gray-700" data-seleccionados role="status">Ninguno seleccionado</span>
+				<div class="flex items-center gap-2">
+					<button type="button" data-cerrar class="btn btn-secundario">Cancelar</button>
+					<button class="btn btn-primario" data-confirmar disabled><PackagePlus class="size-4" aria-hidden="true" /><span>Agregar</span></button>
+				</div>
+			</footer>
+		</form>
+	</dialog>
+</Panel>
+<script src="../../scripts/agregar-productos.ts"></script>

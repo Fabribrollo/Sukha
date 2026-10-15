@@ -1,0 +1,91 @@
+---
+import { BadgeDollarSign, CalendarClock, Pause, Pencil, Percent, Plus, Save, TicketPercent, Truck, Users } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { centavos, deCampoFecha, dia, enCampo, entero, errorDe, marcado, paraCampoFecha, pesos, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const id = f.get('id');
+  const minimo = centavos(f, 'minimo');
+  const tipo = String(f.get('tipo') ?? '');
+  // El "valor" es un porcentaje o un monto en pesos, según el tipo.
+  const valor = tipo === 'monto' ? centavos(f, 'valor') : tipo === 'porcentaje' ? entero(f, 'valor') : 0;
+  if (Number.isNaN(minimo) || (!id && (valor === null || Number.isNaN(valor)))) error = 'Revisá los números del cupón.';
+  else {
+    const comunes = { minimoCentavos: minimo ?? 0, usosMaximos: entero(f, 'usosMaximos'), venceEn: deCampoFecha(txt(f, 'venceEn')) };
+    const r = id
+      ? await api(Astro.request, `/api/admin/cupones/${id}`, { ...comunes, activo: marcado(f, 'activo') }, 'PATCH')
+      : await api(Astro.request, '/api/admin/cupones', { ...comunes, codigo: txt(f, 'codigo'), tipo, valor });
+    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+    error = await errorDe(r);
+  }
+}
+
+const cupones = await leer<any[]>(Astro.request, '/api/admin/cupones');
+const vista = (c: any): [string, any] => (c.tipo === 'porcentaje' ? [`${c.valor}%`, Percent] : c.tipo === 'monto' ? [pesos(c.valor), BadgeDollarSign] : ['Envío gratis', Truck]);
+const vencido = (c: any) => c.venceEn && c.venceEn < new Date().toISOString();
+const agotado = (c: any) => c.usosMaximos !== null && c.usos >= c.usosMaximos;
+---
+
+<Panel titulo="Cupones" error={error}>
+	{cupones.length === 0 && <Tarjeta alRas><Vacio texto="Todavía no hay cupones"><TicketPercent aria-hidden="true" /></Vacio></Tarjeta>}
+
+	<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+		{cupones.map((c) => {
+			const [descuento, Icono] = vista(c);
+			return (
+				<article class:list={['rounded-2xl border border-dashed border-gray-300 bg-white p-5', (!c.activo || vencido(c) || agotado(c)) && 'opacity-70']}>
+					<div class="flex items-start justify-between gap-3">
+						<span class="bg-brand-50 text-brand-500 flex size-11 shrink-0 items-center justify-center rounded-xl"><Icono class="size-5" aria-hidden="true" /></span>
+						{!c.activo ? <Insignia><Pause aria-hidden="true" />Pausado</Insignia> : vencido(c) ? <Insignia color="rojo">Vencido</Insignia> : agotado(c) ? <Insignia color="rojo">Agotado</Insignia> : <Insignia color="verde">Activo</Insignia>}
+					</div>
+					<p class="text-theme-xl mt-3 font-semibold tracking-wide text-gray-800">{c.codigo}</p>
+					<p class="text-theme-sm text-gray-500">{descuento}{c.minimoCentavos ? ` · desde ${pesos(c.minimoCentavos)}` : ''}</p>
+					<ul class="text-theme-xs mt-3 flex flex-wrap gap-x-4 gap-y-1 text-gray-500">
+						<li class="flex items-center gap-1.5"><Users class="size-3.5" aria-hidden="true" />{c.usos}{c.usosMaximos ? ` de ${c.usosMaximos}` : ''} usos</li>
+						{c.venceEn && <li class="flex items-center gap-1.5"><CalendarClock class="size-3.5" aria-hidden="true" />Vence {dia(c.venceEn)}</li>}
+					</ul>
+					<details class="mt-4 border-t border-gray-100 pt-3">
+						<summary class="hover:text-brand-500 text-theme-sm inline-flex items-center gap-1.5 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar</summary>
+						<form method="post" class="mt-4 space-y-4">
+							<input type="hidden" name="id" value={c.id} />
+							<Campo etiqueta="Compra mínima" nombre="minimo" prefijo="$" inputmode="decimal" valor={enCampo(c.minimoCentavos)} />
+							<Campo etiqueta="Usos máximos" nombre="usosMaximos" inputmode="numeric" valor={c.usosMaximos} placeholder="Sin tope" />
+							<Campo etiqueta="Vence" nombre="venceEn" tipo="datetime-local" valor={paraCampoFecha(c.venceEn)} />
+							<div class="flex items-center justify-between gap-3">
+								<Interruptor etiqueta="Activo" nombre="activo" marcado={c.activo === 1} />
+								<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+							</div>
+						</form>
+					</details>
+				</article>
+			);
+		})}
+	</div>
+
+	<Tarjeta titulo="Nuevo cupón">
+		<Plus slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		<form method="post" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+			<Campo etiqueta="Código" nombre="codigo" required maxlength="30" placeholder="HOLA10" class="[&_input]:uppercase" />
+			<Campo etiqueta="Tipo" nombre="tipo" tipo="select">
+				<option value="porcentaje">% de descuento</option>
+				<option value="monto">Monto fijo en $</option>
+				<option value="envio_gratis">Envío gratis</option>
+			</Campo>
+			<Campo etiqueta="Valor" nombre="valor" inputmode="decimal" placeholder="10" ayuda="El porcentaje (10 = 10%) o el monto en pesos, según el tipo. Para envío gratis se deja vacío." />
+			<Campo etiqueta="Compra mínima" nombre="minimo" prefijo="$" inputmode="decimal" placeholder="Sin mínimo" />
+			<Campo etiqueta="Usos máximos" nombre="usosMaximos" inputmode="numeric" placeholder="Sin tope" />
+			<Campo etiqueta="Vence" nombre="venceEn" tipo="datetime-local" />
+			<button class="btn btn-primario justify-self-start"><Plus class="size-4" aria-hidden="true" />Crear cupón</button>
+		</form>
+	</Tarjeta>
+</Panel>

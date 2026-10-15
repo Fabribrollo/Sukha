@@ -1,0 +1,57 @@
+---
+import { Palette, Plus, Ruler } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { errorDe, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r =
+    f.get('accion') === 'talle'
+      ? await api(Astro.request, '/api/admin/talles', { nombre: txt(f, 'nombre') })
+      : await api(Astro.request, '/api/admin/colores', { nombre: txt(f, 'nombre'), hex: txt(f, 'hex') });
+  // Redirigir después de guardar evita que recargar la página repita el alta.
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  error = await errorDe(r);
+}
+
+const { talles, colores } = await leer<{ talles: any[]; colores: any[] }>(Astro.request, '/api/admin/opciones');
+---
+
+<Panel titulo="Talles y colores" error={error}>
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+		<Tarjeta titulo="Talles">
+			<Ruler slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<ul class="mb-5 flex flex-wrap gap-2">
+				{talles.map((t) => <li class="flex h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700">{t.nombre}</li>)}
+			</ul>
+			<form method="post" class="flex items-end gap-3">
+				<input type="hidden" name="accion" value="talle" />
+				<Campo etiqueta="Nuevo talle" nombre="nombre" required maxlength="20" class="flex-1" />
+				<button class="btn btn-primario" title="Agregar talle" aria-label="Agregar talle"><Plus class="size-4" aria-hidden="true" /></button>
+			</form>
+		</Tarjeta>
+
+		<Tarjeta titulo="Colores">
+			<Palette slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<ul class="mb-5 flex flex-wrap gap-2">
+				{colores.map((c) => (
+					<li class="flex h-10 items-center gap-2 rounded-lg border border-gray-200 pr-3 pl-2 text-sm font-medium text-gray-700">
+						<span class="size-6 rounded-full border border-gray-200" style={`background:${c.hex ?? 'transparent'}`} aria-hidden="true"></span>{c.nombre}
+					</li>
+				))}
+			</ul>
+			<form method="post" class="flex items-end gap-3">
+				<input type="hidden" name="accion" value="color" />
+				<Campo etiqueta="Nuevo color" nombre="nombre" required maxlength="40" class="flex-1" />
+				<Campo etiqueta="Tono" nombre="hex" tipo="color" valor="#888888" class="w-16" />
+				<button class="btn btn-primario" title="Agregar color" aria-label="Agregar color"><Plus class="size-4" aria-hidden="true" /></button>
+			</form>
+		</Tarjeta>
+	</div>
+</Panel>

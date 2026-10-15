@@ -1,0 +1,63 @@
+---
+import { ArrowLeftRight, ExternalLink, PackageX, Save, Undo2 } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { centavos, enCampo, errorDe, fecha } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const reembolso = centavos(f, 'reembolso');
+  if (Number.isNaN(reembolso)) error = 'El monto del reembolso no es válido.';
+  else {
+    const r = await api(Astro.request, `/api/admin/solicitudes/${f.get('id')}`, { estado: f.get('estado'), reembolsoCentavos: reembolso }, 'PATCH');
+    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+    error = await errorDe(r);
+  }
+}
+
+const solicitudes = await leer<any[]>(Astro.request, '/api/admin/solicitudes');
+const TIPOS: Record<string, [string, any]> = { arrepentimiento: ['Arrepentimiento', Undo2], cambio: ['Cambio', ArrowLeftRight], devolucion: ['Devolución', PackageX] };
+const ESTADOS: Record<string, [string, any]> = { abierta: ['Abierta', 'ambar'], aprobada: ['Aprobada', 'azul'], rechazada: ['Rechazada', 'rojo'], resuelta: ['Resuelta', 'verde'] };
+---
+
+<Panel titulo="Post-venta" error={error}>
+	{solicitudes.length === 0 && <Tarjeta alRas><Vacio texto="No hay pedidos de cambio ni devolución"><Undo2 aria-hidden="true" /></Vacio></Tarjeta>}
+
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+		{solicitudes.map((s) => {
+			const [tipo, Icono] = TIPOS[s.tipo];
+			const [estado, color] = ESTADOS[s.estado];
+			return (
+				<Tarjeta titulo={tipo}>
+					<Icono slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+					<Insignia slot="acciones" color={color}>{estado}</Insignia>
+					<div class="space-y-4">
+						<div class="text-theme-sm flex items-center justify-between gap-3">
+							<span><span class="font-medium text-gray-800">{s.nombre}</span><br /><span class="text-theme-xs text-gray-500">{fecha(s.creado_en)}</span></span>
+							<a href={`/admin/pedidos/${s.pedido_id}`} class="btn btn-secundario px-3 py-2"><ExternalLink class="size-4" aria-hidden="true" />Pedido</a>
+						</div>
+						{s.motivo && <blockquote class="text-theme-sm rounded-lg bg-gray-50 p-3 text-gray-700">{s.motivo}</blockquote>}
+						<ul class="flex flex-wrap gap-1.5">
+							{s.items.map((i: any) => <li><Insignia>{i.cantidad} × {[i.nombre, i.talle, i.color].filter(Boolean).join(' ')}</Insignia></li>)}
+						</ul>
+						<form method="post" class="flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">
+							<input type="hidden" name="id" value={s.id} />
+							<Campo etiqueta="Estado" nombre="estado" tipo="select" class="min-w-32 flex-1">
+								{Object.entries(ESTADOS).map(([v, [n]]) => <option value={v} selected={s.estado === v}>{n}</option>)}
+							</Campo>
+							<Campo etiqueta="Reembolsado" nombre="reembolso" prefijo="$" inputmode="decimal" valor={enCampo(s.reembolso_centavos)} class="min-w-32 flex-1" />
+							<button class="btn btn-primario" title="Guardar" aria-label="Guardar"><Save class="size-4" aria-hidden="true" /></button>
+						</form>
+					</div>
+				</Tarjeta>
+			);
+		})}
+	</div>
+</Panel>

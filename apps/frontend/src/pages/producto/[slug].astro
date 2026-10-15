@@ -1,0 +1,81 @@
+---
+import { ChevronDown } from '@lucide/astro';
+import FichaProducto from '../../components/tienda/FichaProducto.tsx';
+import Migas from '../../components/tienda/Migas.astro';
+import TarjetaProducto from '../../components/tienda/TarjetaProducto.astro';
+import Tienda from '../../layouts/Tienda.astro';
+import { api } from '../../lib/api';
+import { canonica, datosDeLaTienda, jsonLd, parrafos, precioFinal, urlFoto, type FichaDeProducto } from '../../lib/tienda';
+
+export const prerender = false;
+
+const respuesta = await api(Astro.request, `/api/catalogo/productos/${encodeURIComponent(Astro.params.slug!)}`);
+if (respuesta.status === 404) return Astro.rewrite('/404');
+const p = (await respuesta.json()) as FichaDeProducto;
+const { tienda } = await datosDeLaTienda(Astro.request);
+
+const solicitada = Number(Astro.url.searchParams.get('variante'));
+const varianteInicial = p.variantes.some((v) => v.id === solicitada) ? solicitada : null;
+const url = canonica(Astro.url);
+const descripcion = (p.descripcion ?? '').replace(/\s+/g, ' ').trim().slice(0, 155) || `${p.nombre} en Sukhä. Envíos a todo el país.`;
+const primera = p.imagenes[0]?.clave;
+const hayStock = p.variantes.some((v) => v.stock > 0);
+const origen = Astro.url.origin;
+const datosEstructurados = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: p.nombre,
+  description: descripcion,
+  image: p.imagenes.map((i) => new URL(urlFoto(i.clave, 'grande'), origen).toString()),
+  brand: { '@type': 'Brand', name: 'Sukhä' },
+  offers: {
+    '@type': 'Offer',
+    url,
+    priceCurrency: 'ARS',
+    price: (precioFinal(p) / 100).toFixed(2),
+    availability: hayStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+  },
+};
+// A la isla solo le pasamos lo que usa: no hace falta mandar al navegador los textos de la tienda.
+const { descuentoTransferenciaPorcentaje, cuotasSinInteres, reservaMercadoPagoMinutos, reservaTransferenciaHoras, retiro, ultimasUnidadesUmbral, maxUnidadesPorPedido } = tienda;
+const datosParaLaFicha = { descuentoTransferenciaPorcentaje, cuotasSinInteres, reservaMercadoPagoMinutos, reservaTransferenciaHoras, retiro, ultimasUnidadesUmbral, maxUnidadesPorPedido };
+const cambios = parrafos(tienda.contenido.contenido_politica_cambios);
+const secciones = [
+  { titulo: 'Descripción', abierta: true, parrafos: parrafos(p.descripcion) },
+  { titulo: 'Material y cuidados', abierta: false, parrafos: [p.material && `Material: ${p.material}`, p.cuidados && `Cuidados: ${p.cuidados}`].filter(Boolean) as string[] },
+  { titulo: 'Cambios y devoluciones', abierta: false, parrafos: cambios.slice(0, 2), enlace: cambios.length ? { href: '/cambios-y-devoluciones', texto: 'Ver la política completa' } : undefined },
+].filter((s) => s.parrafos.length > 0);
+---
+
+<Tienda titulo={p.nombre} descripcion={descripcion} imagen={primera ? urlFoto(primera, 'grande') : undefined} canonica={url} tipo="product">
+	<script type="application/ld+json" set:html={jsonLd(datosEstructurados)} slot="head" />
+	<div class="contenedor pt-5 pb-4">
+		<Migas items={[...(p.categoriaPadre ? [{ texto: p.categoriaPadre.nombre, href: `/categoria/${p.categoriaPadre.slug}` }] : []), { texto: p.categoria, href: `/categoria/${p.categoriaSlug}` }, { texto: p.nombre }]} />
+		<div class="mt-5">
+			<FichaProducto client:load producto={p} tienda={datosParaLaFicha} varianteInicial={varianteInicial} url={url} />
+		</div>
+
+		{secciones.length > 0 && (
+			<div class="border-linea mt-12 max-w-3xl divide-y border-y">
+				{secciones.map((s) => (
+					<details open={s.abierta} class="group py-4">
+						<summary class="flex items-center justify-between gap-4 text-base font-semibold">{s.titulo}<ChevronDown class="size-5 transition group-open:rotate-180" aria-hidden="true" /></summary>
+						<div class="text-suave mt-3 space-y-3 text-sm leading-relaxed">
+							{s.parrafos.map((t) => <p>{t}</p>)}
+							{s.enlace && <a href={s.enlace.href} class="text-texto font-medium underline underline-offset-4">{s.enlace.texto}</a>}
+						</div>
+					</details>
+				))}
+			</div>
+		)}
+
+		{p.relacionados.length > 0 && (
+			<section class="mt-14" aria-labelledby="sec-relacionados">
+				<h2 id="sec-relacionados" class="mb-5 text-xl font-semibold md:text-2xl">También te puede gustar</h2>
+				<ul class="fila-deslizable">
+					{p.relacionados.map((r) => <li class="fila-deslizable-item"><TarjetaProducto producto={r} tienda={tienda} /></li>)}
+				</ul>
+			</section>
+		)}
+	</div>
+</Tienda>

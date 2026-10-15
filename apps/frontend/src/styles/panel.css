@@ -1,0 +1,170 @@
+/* Panel de administración de Sukhä, sobre Tailwind 4.
+   La paleta, las sombras y los tamaños de texto vienen de TailAdmin (https://tailadmin.com, licencia MIT),
+   igual que el estilo de sus componentes: menú lateral, tarjetas, insignias, botones, tablas y campos. */
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+
+@theme {
+  /* Tipografía del sistema: la clásica de cada dispositivo (Segoe UI en Windows, San Francisco en iPhone y Mac, Roboto en Android). No descarga nada. */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --text-title-sm: 30px;
+  --text-title-sm--line-height: 38px;
+  --text-title-xs: 24px;
+  --text-title-xs--line-height: 32px;
+  --text-theme-xl: 20px;
+  --text-theme-xl--line-height: 30px;
+  --text-theme-sm: 14px;
+  --text-theme-sm--line-height: 20px;
+  --text-theme-xs: 12px;
+  --text-theme-xs--line-height: 18px;
+
+  --color-brand-25: #f2f7ff;
+  --color-brand-50: #ecf3ff;
+  --color-brand-100: #dde9ff;
+  --color-brand-200: #c2d6ff;
+  --color-brand-300: #9cb9ff;
+  --color-brand-400: #7592ff;
+  --color-brand-500: #465fff;
+  --color-brand-600: #3641f5;
+  --color-brand-700: #2a31d8;
+
+  --color-gray-25: #fcfcfd;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f2f4f7;
+  --color-gray-200: #e4e7ec;
+  --color-gray-300: #d0d5dd;
+  --color-gray-400: #98a2b3;
+  --color-gray-500: #667085;
+  --color-gray-600: #475467;
+  --color-gray-700: #344054;
+  --color-gray-800: #1d2939;
+  --color-gray-900: #101828;
+
+  --color-success-50: #ecfdf3;
+  --color-success-100: #d1fadf;
+  --color-success-500: #12b76a;
+  --color-success-600: #039855;
+  --color-success-700: #027a48;
+
+  --color-error-50: #fef3f2;
+  --color-error-100: #fee4e2;
+  --color-error-300: #fda29b;
+  --color-error-500: #f04438;
+  --color-error-600: #d92d20;
+  --color-error-700: #b42318;
+
+  --color-warning-50: #fffaeb;
+  --color-warning-100: #fef0c7;
+  --color-warning-500: #f79009;
+  --color-warning-600: #dc6803;
+  --color-warning-700: #b54708;
+
+  --color-blue-light-50: #f0f9ff;
+  --color-blue-light-100: #e0f2fe;
+  --color-blue-light-500: #0ba5ec;
+  --color-blue-light-600: #0086c9;
+
+  --color-purple-50: #f4f3ff;
+  --color-purple-500: #7a5af8;
+  --color-purple-600: #6938ef;
+
+  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-theme-sm: 0px 1px 3px 0px rgba(16, 24, 40, 0.1), 0px 1px 2px 0px rgba(16, 24, 40, 0.06);
+  --shadow-theme-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08), 0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+}
+
+/* ───────────── Menú lateral (TailAdmin) ───────────── */
+@utility menu-item {
+  @apply relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium;
+}
+@utility menu-item-active {
+  @apply bg-brand-50 text-brand-500;
+}
+@utility menu-item-inactive {
+  @apply text-gray-700 hover:bg-gray-100;
+}
+
+/* ───────────── Campos de formulario ───────────── */
+@utility campo {
+  @apply shadow-theme-xs focus:border-brand-300 focus:ring-brand-500/10 h-11 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden;
+}
+@utility etiqueta {
+  @apply mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700;
+}
+
+/* ───────────── Botones ───────────── */
+@utility btn {
+  @apply shadow-theme-xs inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium whitespace-nowrap transition focus-visible:ring-3 focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primario {
+  @apply bg-brand-500 hover:bg-brand-600 focus-visible:ring-brand-500/30 text-white;
+}
+@utility btn-secundario {
+  @apply bg-white text-gray-700 ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus-visible:ring-gray-300;
+}
+@utility btn-peligro {
+  @apply bg-error-500 hover:bg-error-600 focus-visible:ring-error-500/30 text-white;
+}
+@utility btn-peligro-suave {
+  @apply text-error-600 ring-error-300 hover:bg-error-50 bg-white ring-1 ring-inset;
+}
+/* Botón de solo ícono: lleva siempre title y aria-label con lo que hace. */
+@utility btn-icono {
+  @apply inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-3 focus-visible:ring-gray-300 focus-visible:outline-hidden;
+}
+
+/* ───────────── Tablas ───────────── */
+@utility th {
+  @apply text-theme-xs px-4 py-3 text-left font-medium whitespace-nowrap text-gray-500 sm:px-6;
+}
+@utility td {
+  @apply text-theme-sm px-4 py-3 align-middle text-gray-700 sm:px-6;
+}
+
+@layer base {
+  body {
+    @apply bg-gray-50 font-sans text-gray-800 antialiased;
+  }
+  /* Los números de montos y cantidades se alinean en columnas. */
+  .num {
+    @apply text-right whitespace-nowrap tabular-nums;
+  }
+  /* <details> como menú o tarjeta desplegable: sin el triangulito del navegador. */
+  summary {
+    @apply cursor-pointer list-none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+    }
+  }
+}
+ 
+/* ───────────── Arrastrar para ordenar (SortableJS, ver scripts/ordenable.ts) ───────────── */
+/* El lugar vacío donde va a caer el elemento. */
+.arrastre-fantasma {
+  opacity: 0.4;
+  background: var(--color-brand-50) !important;
+  outline: 2px dashed var(--color-brand-300);
+  outline-offset: -2px;
+}
+/* La copia que sigue al puntero: levantada, con sombra y un poco más grande. */
+.arrastre-activo {
+  opacity: 1 !important;
+  background: #fff !important;
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-theme-lg);
+  cursor: grabbing !important;
+  transform: scale(1.02);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  z-index: 100;
+}
+[data-ordenable] > [data-id] {
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}

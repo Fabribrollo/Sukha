@@ -1,0 +1,18 @@
+---
+// Una "i" que muestra una explicación corta al tocarla. Reemplaza los párrafos de ayuda siempre visibles.
+import { Info } from '@lucide/astro';
+interface Props {
+  // Hacia qué lado se abre el globo, para que no se salga de la pantalla.
+  lado?: 'izquierda' | 'derecha';
+}
+const { lado = 'izquierda' } = Astro.props;
+---
+
+<details class="group relative inline-block align-middle font-normal">
+	<summary class="hover:text-brand-500 focus-visible:text-brand-500 flex rounded-full text-gray-400 focus-visible:outline-hidden" aria-label="Ayuda" title="Ayuda">
+		<Info class="size-4" aria-hidden="true" />
+	</summary>
+	<div class:list={['shadow-theme-lg text-theme-xs absolute top-6 z-20 w-60 rounded-lg bg-gray-900 px-3 py-2 leading-relaxed font-normal text-white', lado === 'izquierda' ? 'left-0' : 'right-0']}>
+		<slot />
+	</div>
+</details>

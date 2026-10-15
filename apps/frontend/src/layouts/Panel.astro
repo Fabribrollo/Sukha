@@ -1,0 +1,153 @@
+---
+import '../styles/panel.css';
+import {
+  CircleAlert,
+  CircleCheck,
+  FolderTree,
+  Sparkles,
+  Image,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Palette,
+  Settings,
+  Shirt,
+  ShoppingBag,
+  Store,
+  TicketPercent,
+  TriangleAlert,
+  Truck,
+  Undo2,
+  Users,
+  X,
+} from '@lucide/astro';
+
+interface Props {
+  titulo: string;
+  error?: string;
+  // Mensaje en ámbar: algo salió bien, pero distinto a lo que se pidió.
+  aviso?: string;
+  // Enlace "volver" que se muestra arriba del título, en las páginas de detalle.
+  volver?: { href: string; texto: string };
+}
+const { titulo, error, aviso, volver } = Astro.props;
+// Después de guardar, las páginas redirigen a sí mismas con ?ok para mostrar la confirmación.
+const guardado = Astro.url.searchParams.has('ok');
+
+const grupos = [
+  {
+    nombre: 'Día a día',
+    items: [
+      ['/admin', 'Inicio', LayoutDashboard],
+      ['/admin/pedidos', 'Ventas', ShoppingBag],
+      ['/admin/solicitudes', 'Post-venta', Undo2],
+      ['/admin/clientas', 'Clientas', Users],
+    ],
+  },
+  {
+    nombre: 'Catálogo',
+    items: [
+      ['/admin/productos', 'Productos', Shirt],
+      ['/admin/categorias', 'Categorías', FolderTree],
+      ['/admin/colecciones', 'Colecciones', Sparkles],
+      ['/admin/opciones', 'Talles y colores', Palette],
+    ],
+  },
+  {
+    nombre: 'Tienda',
+    items: [
+      ['/admin/banners', 'Banners', Image],
+      ['/admin/cupones', 'Cupones', TicketPercent],
+      ['/admin/envios', 'Envíos', Truck],
+      ['/admin/configuracion', 'Configuración', Settings],
+    ],
+  },
+] as const;
+const ruta = Astro.url.pathname.replace(/\/$/, '') || '/admin';
+const actual = (href: string) => (href === '/admin' ? ruta === '/admin' : ruta.startsWith(href));
+const admin = Astro.locals.admin;
+---
+
+<html lang="es-AR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>{titulo} · Panel Sukhä</title>
+	</head>
+	<body>
+		<!-- En el celular el menú se abre y se cierra con esta casilla, sin JavaScript. -->
+		<input type="checkbox" id="menu" class="peer sr-only" aria-label="Abrir o cerrar el menú" />
+
+		<aside class="fixed inset-y-0 left-0 z-40 flex w-[280px] -translate-x-full flex-col border-r border-gray-200 bg-white transition-transform duration-200 peer-checked:translate-x-0 lg:translate-x-0">
+			<div class="flex h-16 shrink-0 items-center justify-between px-6">
+				<a href="/admin" class="text-theme-xl font-semibold tracking-[0.2em] text-gray-900">SUKHÄ</a>
+				<label for="menu" class="btn-icono lg:hidden" title="Cerrar menú"><X class="size-5" aria-hidden="true" /></label>
+			</div>
+			<nav class="flex-1 overflow-y-auto px-4 pb-6" aria-label="Secciones del panel">
+				{grupos.map((g) => (
+					<div class="mt-5">
+						<h3 class="text-theme-xs mb-2 px-3 font-medium tracking-wide text-gray-400 uppercase">{g.nombre}</h3>
+						<ul class="flex flex-col gap-1">
+							{g.items.map(([href, nombre, Icono]) => (
+								<li>
+									<a href={href} aria-current={actual(href) ? 'page' : undefined} class:list={['menu-item', actual(href) ? 'menu-item-active' : 'menu-item-inactive']}>
+										<Icono class:list={['size-5 shrink-0', actual(href) ? 'text-brand-500' : 'text-gray-500']} aria-hidden="true" />
+										{nombre}
+									</a>
+								</li>
+							))}
+						</ul>
+					</div>
+				))}
+			</nav>
+		</aside>
+		<label for="menu" class="fixed inset-0 z-30 hidden bg-gray-900/50 peer-checked:block lg:hidden" aria-hidden="true"></label>
+
+		<div class="lg:pl-[280px]">
+			<header class="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-gray-200 bg-white px-4 sm:px-6">
+				<label for="menu" class="btn-icono ring-1 ring-gray-200 lg:hidden" title="Abrir menú"><Menu class="size-5" aria-hidden="true" /></label>
+				<div class="min-w-0 flex-1"></div>
+				<a href="/" target="_blank" rel="noopener" class="btn-icono" title="Ver la tienda" aria-label="Ver la tienda"><Store class="size-5" aria-hidden="true" /></a>
+				<span class="bg-brand-50 text-brand-600 flex size-9 items-center justify-center rounded-full text-sm font-semibold" title={admin?.email}>{admin?.nombre?.[0]?.toUpperCase() ?? '?'}</span>
+				<span class="hidden text-sm font-medium text-gray-700 sm:block">{admin?.nombre}</span>
+				<form method="post" action="/admin/login">
+					<input type="hidden" name="accion" value="salir" />
+					<button class="btn-icono" title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut class="size-5" aria-hidden="true" /></button>
+				</form>
+			</header>
+
+			<main class="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+				<div>
+					{volver && <a href={volver.href} class="hover:text-brand-500 text-theme-sm mb-1 inline-block text-gray-500">← {volver.texto}</a>}
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<h1 class="text-title-xs font-semibold text-gray-800">{titulo}</h1>
+						<div class="flex flex-wrap items-center gap-2"><slot name="acciones" /></div>
+					</div>
+				</div>
+
+				{error && (
+					<div class="border-error-500 bg-error-50 flex items-start gap-3 rounded-xl border p-4" role="alert">
+						<CircleAlert class="text-error-500 size-5 shrink-0" aria-hidden="true" />
+						<p class="text-sm text-gray-800">{error}</p>
+					</div>
+				)}
+				{aviso && (
+					<div class="border-warning-500 bg-warning-50 flex items-start gap-3 rounded-xl border p-4" role="status">
+						<TriangleAlert class="text-warning-500 size-5 shrink-0" aria-hidden="true" />
+						<p class="text-sm text-gray-800">{aviso}</p>
+					</div>
+				)}
+				{!error && !aviso && guardado && (
+					<div class="border-success-500 bg-success-50 flex items-center gap-3 rounded-xl border p-4" role="status">
+						<CircleCheck class="text-success-500 size-5 shrink-0" aria-hidden="true" />
+						<p class="text-sm font-medium text-gray-800">Guardado</p>
+					</div>
+				)}
+
+				<slot />
+			</main>
+		</div>
+	</body>
+</html>

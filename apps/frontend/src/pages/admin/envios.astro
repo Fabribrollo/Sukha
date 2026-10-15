@@ -1,0 +1,126 @@
+---
+import { Home, MapPin, Pause, Pencil, Plus, Save, Store, Truck, X } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { TRANSPORTES, centavos, enCampo, entero, errorDe, marcado, pesos, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const accion = f.get('accion');
+  let r: Response | null = null;
+  if (accion === 'zona') {
+    const precio = centavos(f, 'precio');
+    const gratis = centavos(f, 'gratis');
+    if (precio === null || Number.isNaN(precio) || Number.isNaN(gratis)) error = 'Revisá los montos: van en pesos, por ejemplo 8000.';
+    else {
+      const id = f.get('id');
+      const datos = { nombre: txt(f, 'nombre'), precioCentavos: precio, gratisDesdeCentavos: gratis || null };
+      r = id
+        ? await api(Astro.request, `/api/admin/zonas/${id}`, { ...datos, activa: marcado(f, 'activa') }, 'PATCH')
+        : await api(Astro.request, '/api/admin/zonas', { ...datos, transporte: f.get('transporte'), modalidad: f.get('modalidad') });
+    }
+  } else if (accion === 'rango') {
+    const desde = entero(f, 'cpDesde');
+    r = await api(Astro.request, `/api/admin/zonas/${f.get('id')}/rangos`, { cpDesde: desde, cpHasta: entero(f, 'cpHasta') ?? desde });
+  } else if (accion === 'borrarRango') {
+    r = await api(Astro.request, `/api/admin/rangos/${f.get('id')}`, undefined, 'DELETE');
+  }
+  if (r?.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  if (r) error = await errorDe(r);
+}
+
+const zonas = await leer<any[]>(Astro.request, '/api/admin/zonas');
+---
+
+<Panel titulo="Envíos" error={error}>
+	<a slot="acciones" href="/admin/configuracion" class="btn btn-secundario"><Store class="size-4" aria-hidden="true" />Retiro en persona</a>
+
+	{zonas.length === 0 && <Tarjeta alRas><Vacio texto="Sin zonas no se puede comprar con envío. Creá la primera abajo."><Truck aria-hidden="true" /></Vacio></Tarjeta>}
+
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+		{zonas.map((z) => {
+			const Modalidad = z.modalidad === 'sucursal' ? MapPin : Home;
+			return (
+				<Tarjeta titulo={z.nombre} class={!z.activa ? 'opacity-70' : ''}>
+					<Truck slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+					<Fragment slot="acciones">
+						{!z.activa && <Insignia><Pause aria-hidden="true" />Pausada</Insignia>}
+						<span class="text-base font-semibold text-gray-800 tabular-nums">{pesos(z.precioCentavos)}</span>
+					</Fragment>
+					<div class="space-y-4">
+						<div class="flex flex-wrap gap-2">
+							<Insignia color="azul">{TRANSPORTES[z.transporte]}</Insignia>
+							<Insignia color="celeste"><Modalidad aria-hidden="true" />{z.modalidad === 'sucursal' ? 'A sucursal' : 'A domicilio'}</Insignia>
+							{z.gratisDesdeCentavos && <Insignia color="verde">Gratis desde {pesos(z.gratisDesdeCentavos)}</Insignia>}
+						</div>
+
+						<div>
+							<p class="etiqueta">Códigos postales</p>
+							<ul class="flex flex-wrap gap-2">
+								{z.rangos.length === 0 && <li><Insignia color="ambar">Ninguno: no le aparece a nadie</Insignia></li>}
+								{z.rangos.map((r: any) => (
+									<li>
+										<form method="post" class="text-theme-sm inline-flex items-center gap-1 rounded-lg border border-gray-200 py-1 pr-1 pl-2.5 font-medium text-gray-700 tabular-nums">
+											<input type="hidden" name="accion" value="borrarRango" /><input type="hidden" name="id" value={r.id} />
+											{r.cpDesde === r.cpHasta ? r.cpDesde : `${r.cpDesde} – ${r.cpHasta}`}
+											<button class="hover:bg-error-50 hover:text-error-600 flex size-6 cursor-pointer items-center justify-center rounded text-gray-400" title="Quitar" aria-label={`Quitar códigos ${r.cpDesde} a ${r.cpHasta}`}><X class="size-3.5" aria-hidden="true" /></button>
+										</form>
+									</li>
+								))}
+							</ul>
+						</div>
+
+						<form method="post" class="flex items-end gap-2">
+							<input type="hidden" name="accion" value="rango" /><input type="hidden" name="id" value={z.id} />
+							<Campo etiqueta="Desde" nombre="cpDesde" inputmode="numeric" required placeholder="5000" class="flex-1" />
+							<Campo etiqueta="Hasta" nombre="cpHasta" inputmode="numeric" placeholder="5999" class="flex-1" />
+							<button class="btn btn-secundario" title="Agregar códigos postales" aria-label="Agregar códigos postales"><Plus class="size-4" aria-hidden="true" /></button>
+						</form>
+
+						<details class="group border-t border-gray-100 pt-3">
+							<summary class="hover:text-brand-500 text-theme-sm inline-flex items-center gap-1.5 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar precio</summary>
+							<form method="post" class="mt-4 space-y-4">
+								<input type="hidden" name="accion" value="zona" /><input type="hidden" name="id" value={z.id} />
+								<Campo etiqueta="Nombre" nombre="nombre" valor={z.nombre} required maxlength="60" />
+								<div class="flex gap-3">
+									<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" valor={enCampo(z.precioCentavos)} required class="flex-1" />
+									<Campo etiqueta="Gratis desde" nombre="gratis" prefijo="$" inputmode="decimal" valor={enCampo(z.gratisDesdeCentavos)} placeholder="Nunca" class="flex-1" />
+								</div>
+								<div class="flex items-center justify-between gap-3">
+									<Interruptor etiqueta="Activa" nombre="activa" marcado={z.activa === 1} />
+									<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+								</div>
+							</form>
+						</details>
+					</div>
+				</Tarjeta>
+			);
+		})}
+	</div>
+
+	<Tarjeta titulo="Nueva zona">
+		<Plus slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		<form method="post" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+			<input type="hidden" name="accion" value="zona" />
+			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" placeholder="Córdoba capital" class="lg:col-span-2" />
+			<Campo etiqueta="Correo" nombre="transporte" tipo="select">
+				{Object.entries(TRANSPORTES).map(([v, n]) => <option value={v}>{n}</option>)}
+			</Campo>
+			<Campo etiqueta="Entrega" nombre="modalidad" tipo="select">
+				<option value="domicilio">A domicilio</option>
+				<option value="sucursal">A sucursal</option>
+			</Campo>
+			<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" required />
+			<Campo etiqueta="Gratis desde" nombre="gratis" prefijo="$" inputmode="decimal" placeholder="Nunca" ayuda="Con una compra de este monto o más, el envío sale gratis." />
+			<button class="btn btn-primario sm:col-span-2 lg:col-span-6 lg:justify-self-start"><Plus class="size-4" aria-hidden="true" />Crear zona</button>
+		</form>
+	</Tarjeta>
+</Panel>

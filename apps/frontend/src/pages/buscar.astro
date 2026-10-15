@@ -1,0 +1,20 @@
+---
+import Listado from '../components/tienda/Listado.astro';
+import Tienda from '../layouts/Tienda.astro';
+import { datosDeLaTienda } from '../lib/tienda';
+import { cargarListado, conCambios, productosNuevos } from '../lib/listado';
+
+export const prerender = false;
+
+const { tienda, filtros } = await datosDeLaTienda(Astro.request);
+const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 60);
+const listado = await cargarListado(Astro.request, Astro.url, { q: q || undefined });
+if (listado.fueraDeRango) return Astro.redirect(conCambios(Astro.url, { pagina: null }));
+const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(Astro.request);
+const titulo = q ? `Resultados para «${q}»` : 'Buscar';
+---
+
+<!-- Las búsquedas no se indexan en Google. -->
+<Tienda titulo={titulo} noindex>
+	<Listado titulo={titulo} migas={[{ texto: 'Búsqueda' }]} {...listado} filtros={filtros} tienda={tienda} mostrarCategorias sugeridos={sugeridos} />
+</Tienda>

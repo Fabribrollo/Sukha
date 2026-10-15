@@ -1,0 +1,20 @@
+---
+import Listado from '../components/tienda/Listado.astro';
+import Tienda from '../layouts/Tienda.astro';
+import { canonica, datosDeLaTienda } from '../lib/tienda';
+import { cargarListado, conCambios, productosNuevos } from '../lib/listado';
+
+export const prerender = false;
+
+const { tienda, filtros } = await datosDeLaTienda(Astro.request);
+// Los destacados de la portada llevan acá con ?destacado=1.
+const destacado = Astro.url.searchParams.get('destacado') === '1';
+const listado = await cargarListado(Astro.request, Astro.url, { destacado });
+if (listado.fueraDeRango) return Astro.redirect(conCambios(Astro.url, { pagina: null }));
+const titulo = destacado ? 'Destacados' : 'Todos los productos';
+const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(Astro.request);
+---
+
+<Tienda titulo={titulo} descripcion={`${titulo} de Sukhä. Envíos a todo el país.`} canonica={canonica(Astro.url, ['pagina', ...(destacado ? ['destacado'] : [])])} noindex={listado.filtrado}>
+	<Listado titulo={titulo} migas={[{ texto: titulo }]} {...listado} filtros={filtros} tienda={tienda} mostrarCategorias sugeridos={sugeridos} />
+</Tienda>

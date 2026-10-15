@@ -1,0 +1,22 @@
+---
+// Casilla con forma de interruptor (toggle de TailAdmin), para opciones de sí o no.
+import Ayuda from './Ayuda.astro';
+interface Props {
+  etiqueta: string;
+  nombre: string;
+  marcado?: boolean;
+  valor?: string | number;
+  ayuda?: string;
+  class?: string;
+}
+const { etiqueta, nombre, marcado = false, valor, ayuda, class: clase } = Astro.props;
+---
+
+<div class:list={['flex items-center gap-2', clase]}>
+	<label class="flex cursor-pointer items-center gap-3 text-sm font-medium text-gray-700 select-none">
+		<input type="checkbox" name={nombre} value={valor} checked={marcado} class="peer sr-only" />
+		<span class="peer-checked:bg-brand-500 peer-focus-visible:ring-brand-500/30 relative h-6 w-11 shrink-0 rounded-full bg-gray-200 transition peer-focus-visible:ring-3 after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:shadow-theme-sm after:transition-transform peer-checked:after:translate-x-5"></span>
+		{etiqueta}
+	</label>
+	{ayuda && <Ayuda>{ayuda}</Ayuda>}
+</div>

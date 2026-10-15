@@ -1,0 +1,19 @@
+---
+import Listado from '../../components/tienda/Listado.astro';
+import Tienda from '../../layouts/Tienda.astro';
+import { canonica, datosDeLaTienda } from '../../lib/tienda';
+import { cargarListado, conCambios, productosNuevos } from '../../lib/listado';
+
+export const prerender = false;
+
+const { tienda, filtros } = await datosDeLaTienda(Astro.request);
+const coleccion = filtros.colecciones.find((c) => c.slug === Astro.params.slug);
+if (!coleccion) return Astro.rewrite('/404');
+const listado = await cargarListado(Astro.request, Astro.url, { coleccion: coleccion.slug });
+if (listado.fueraDeRango) return Astro.redirect(conCambios(Astro.url, { pagina: null }));
+const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(Astro.request);
+---
+
+<Tienda titulo={coleccion.nombre} descripcion={`Colección ${coleccion.nombre} de Sukhä.`} canonica={canonica(Astro.url, ['pagina'])} noindex={listado.filtrado}>
+	<Listado titulo={coleccion.nombre} subtitulo="Colección" migas={[{ texto: coleccion.nombre }]} {...listado} filtros={filtros} tienda={tienda} mostrarCategorias sugeridos={sugeridos} />
+</Tienda>

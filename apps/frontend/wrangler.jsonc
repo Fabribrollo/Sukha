@@ -1,0 +1,21 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sukha-frontend",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-10-06",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "assets": { "directory": "./dist", "binding": "ASSETS" },
+  "observability": { "enabled": true },
+
+  // Nivel superior = producción. El backend no tiene URL pública: /api/* se le reenvía por este binding.
+  "services": [{ "binding": "API", "service": "sukha-backend" }],
+  "routes": [{ "pattern": "sukhaind.com.ar", "custom_domain": true }],
+
+  "env": {
+    "staging": {
+      "services": [{ "binding": "API", "service": "sukha-backend-staging" }],
+      "routes": [],
+      "workers_dev": true
+    }
+  }
+}

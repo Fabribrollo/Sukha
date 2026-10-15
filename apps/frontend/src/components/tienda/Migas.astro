@@ -1,0 +1,27 @@
+---
+// Migas de pan: Inicio › Categoría › Producto. El último elemento es la página actual y no lleva link.
+import { ChevronRight } from '@lucide/astro';
+import { jsonLd } from '../../lib/formato';
+
+interface Props {
+  items: { texto: string; href?: string }[];
+}
+const { items } = Astro.props;
+const todos = [{ texto: 'Inicio', href: '/' }, ...items];
+---
+
+<nav aria-label="Migas de pan" class="text-suave text-sm">
+	<ol class="flex flex-wrap items-center gap-1">
+		{todos.map((m, i) => (
+			<li class="flex items-center gap-1">
+				{i > 0 && <ChevronRight class="size-3.5" aria-hidden="true" />}
+				{m.href && i < todos.length - 1 ? <a href={m.href} class="hover:text-texto inline-flex min-h-11 items-center hover:underline">{m.texto}</a> : <span aria-current="page" class="text-texto">{m.texto}</span>}
+			</li>
+		))}
+	</ol>
+</nav>
+<script type="application/ld+json" set:html={jsonLd({
+	'@context': 'https://schema.org',
+	'@type': 'BreadcrumbList',
+	itemListElement: todos.map((m, i) => ({ '@type': 'ListItem', position: i + 1, name: m.texto, ...(m.href ? { item: new URL(m.href, Astro.url.origin).toString() } : {}) })),
+})} />

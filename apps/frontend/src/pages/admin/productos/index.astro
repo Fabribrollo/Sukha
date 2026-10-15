@@ -1,0 +1,118 @@
+---
+import { ImageOff, Pencil, Plus, Search, Shirt, Trash2 } from '@lucide/astro';
+import Campo from '../../../components/panel/Campo.astro';
+import Insignia from '../../../components/panel/Insignia.astro';
+import Tarjeta from '../../../components/panel/Tarjeta.astro';
+import Vacio from '../../../components/panel/Vacio.astro';
+import Panel from '../../../layouts/Panel.astro';
+import { api, leer } from '../../../lib/api';
+import { ESTADOS_PRODUCTO, categoriasParaElegir, centavos, errorDe, entero, foto, pesos, txt } from '../../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (f.get('accion') === 'borrar') {
+    const r = await api(Astro.request, `/api/admin/productos/${f.get('id')}`, undefined, 'DELETE');
+    // Un producto con ventas no se borra: el backend lo oculta y avisa.
+    if (r.ok) return Astro.redirect(`/admin/productos?${((await r.json()) as any).resultado === 'oculto' ? 'oculto' : 'ok'}`, 303);
+    error = await errorDe(r);
+  } else {
+    const precio = centavos(f, 'precio');
+    if (!precio) error = 'Escribí el precio en pesos, por ejemplo 18500 o 18.500,50.';
+    else {
+      const r = await api(Astro.request, '/api/admin/productos', { nombre: txt(f, 'nombre'), categoriaId: entero(f, 'categoriaId'), precioCentavos: precio });
+      // El producto nace como borrador: se sigue en su página para cargarle variantes y fotos.
+      if (r.ok) return Astro.redirect(`/admin/productos/${((await r.json()) as any).id}?ok`, 303);
+      error = await errorDe(r);
+    }
+  }
+}
+
+const estado = Astro.url.searchParams.get('estado') ?? '';
+const q = Astro.url.searchParams.get('q') ?? '';
+const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }) });
+const [productos, categorias] = await Promise.all([
+  leer<any[]>(Astro.request, `/api/admin/productos?${consulta}`),
+  leer<any[]>(Astro.request, '/api/admin/categorias'),
+]);
+const color: Record<string, any> = { publicado: 'verde', borrador: 'ambar', oculto: 'gris' };
+const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
+---
+
+<Panel titulo="Productos" error={error} aviso={Astro.url.searchParams.has('oculto') ? 'Ese producto ya tuvo ventas, así que no se puede borrar: quedó oculto de la tienda.' : undefined}>
+	<details slot="acciones" class="relative" open={!!error}>
+		<summary class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</summary>
+		<div class="shadow-theme-lg absolute right-0 z-10 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-4">
+			<form method="post" class="space-y-3">
+				<Campo etiqueta="Nombre" nombre="nombre" required maxlength="120" />
+				<Campo etiqueta="Categoría" nombre="categoriaId" tipo="select" required data-combo data-crear="/api/admin/categorias">
+					{categoriasParaElegir(categorias).map((c) => <option value={c.id}>{c.etiqueta}</option>)}
+				</Campo>
+				<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" required />
+				<button class="btn btn-primario w-full"><Plus class="size-4" aria-hidden="true" />Crear borrador</button>
+			</form>
+		</div>
+	</details>
+
+	<div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+		<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Filtrar por estado">
+			<a href="/admin/productos" aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todos</a>
+			{Object.entries(ESTADOS_PRODUCTO).map(([valor, nombre]) => (
+				<a href={`/admin/productos?estado=${valor}`} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}</a>
+			))}
+		</nav>
+		<form method="get" class="relative lg:w-72" role="search">
+			{estado && <input type="hidden" name="estado" value={estado} />}
+			<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+			<input type="search" name="q" value={q} placeholder="Buscar producto" aria-label="Buscar producto" class="campo pl-10" />
+		</form>
+	</div>
+
+	<Tarjeta alRas>
+		{productos.length === 0 ? <Vacio texto="No hay productos con este filtro"><Shirt aria-hidden="true" /></Vacio> : (
+			<div class="overflow-x-auto">
+				<table class="min-w-full">
+					<thead class="border-b border-gray-100"><tr><th class="th">Producto</th><th class="th">Estado</th><th class="th num">Precio</th><th class="th num">Stock</th><th class="th"><span class="sr-only">Acciones</span></th></tr></thead>
+					<tbody class="divide-y divide-gray-100">
+						{productos.map((p) => (
+							<tr class="hover:bg-gray-50">
+								<td class="td">
+									<a href={`/admin/productos/${p.id}`} class="flex items-center gap-3">
+										{p.foto
+											? <img class="size-12 shrink-0 rounded-lg object-cover" src={foto(p.foto)} alt="" loading="lazy" />
+											: <span class="flex size-12 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400"><ImageOff class="size-5" aria-label="Sin foto" /></span>}
+										<span><span class="hover:text-brand-500 font-medium text-gray-800">{p.nombre}</span><br /><span class="text-theme-xs text-gray-500">{p.categoria}</span></span>
+									</a>
+								</td>
+								<td class="td"><Insignia color={color[p.estado]}>{ESTADOS_PRODUCTO[p.estado]}</Insignia></td>
+								<td class="td num">
+									{p.precioOfertaCentavos
+										? <><span class="font-medium text-gray-800">{pesos(p.precioOfertaCentavos)}</span><br /><s class="text-theme-xs text-gray-400">{pesos(p.precioCentavos)}</s></>
+										: <span class="font-medium text-gray-800">{pesos(p.precioCentavos)}</span>}
+								</td>
+								<td class="td num">{p.stock === 0 ? <Insignia color="rojo">Sin stock</Insignia> : <span class="font-medium text-gray-800">{p.stock}</span>}</td>
+								<td class="td">
+									<span class="flex items-center justify-end gap-1">
+										<a href={`/admin/productos/${p.id}`} class="btn-icono" title="Editar" aria-label={`Editar ${p.nombre}`}><Pencil class="size-5" aria-hidden="true" /></a>
+										{/* Borrar pide confirmación: el tacho abre un segundo botón, sin ventanas emergentes. */}
+										<details class="group flex items-center">
+											<summary class="btn-icono hover:bg-error-50 hover:text-error-600 group-open:hidden" title="Borrar" aria-label={`Borrar ${p.nombre}`}><Trash2 class="size-5" aria-hidden="true" /></summary>
+											<form method="post">
+												<input type="hidden" name="accion" value="borrar" /><input type="hidden" name="id" value={p.id} />
+												<button class="btn btn-peligro px-3 py-2"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+											</form>
+										</details>
+									</span>
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)}
+	</Tarjeta>
+</Panel>
+
+<script src="../../../scripts/combo.ts"></script>

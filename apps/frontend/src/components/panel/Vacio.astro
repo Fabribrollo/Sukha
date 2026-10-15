@@ -1,0 +1,13 @@
+---
+// Estado vacío: un ícono grande y una línea, en lugar de una tabla sin filas.
+interface Props {
+  texto: string;
+}
+const { texto } = Astro.props;
+---
+
+<div class="flex flex-col items-center gap-3 px-6 py-12 text-center">
+	<span class="flex size-14 items-center justify-center rounded-full bg-gray-100 text-gray-400 [&>svg]:size-7"><slot /></span>
+	<p class="text-sm text-gray-500">{texto}</p>
+	<slot name="accion" />
+</div>

@@ -1,0 +1,56 @@
+---
+import { BellRing, Download, Phone, ShoppingBag, Users } from '@lucide/astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Metrica from '../../components/panel/Metrica.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { leer } from '../../lib/api';
+import { dia, pesos } from '../../lib/panel';
+
+export const prerender = false;
+
+const clientas = await leer<any[]>(Astro.request, '/api/admin/clientas');
+const suscriptas = clientas.filter((c) => c.acepta_novedades).length;
+const compradoras = clientas.filter((c) => c.pedidos > 0).length;
+---
+
+<Panel titulo="Clientas">
+	<a slot="acciones" class="btn btn-secundario" href="/api/admin/clientas/exportar"><Download class="size-4" aria-hidden="true" />Exportar</a>
+
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+		<Metrica etiqueta="Clientas" valor={clientas.length} color="azul"><Users aria-hidden="true" /></Metrica>
+		<Metrica etiqueta="Compraron" valor={compradoras} color="verde"><ShoppingBag aria-hidden="true" /></Metrica>
+		<Metrica etiqueta="Reciben novedades" valor={suscriptas} color="violeta"><BellRing aria-hidden="true" /></Metrica>
+	</div>
+
+	<Tarjeta alRas>
+		{clientas.length === 0 ? <Vacio texto="Todavía no hay clientas"><Users aria-hidden="true" /></Vacio> : (
+			<div class="overflow-x-auto">
+				<table class="min-w-full">
+					<thead class="border-b border-gray-100"><tr><th class="th">Clienta</th><th class="th">Contacto</th><th class="th num">Compras</th><th class="th num">Total</th></tr></thead>
+					<tbody class="divide-y divide-gray-100">
+						{clientas.map((c) => (
+							<tr class="hover:bg-gray-50">
+								<td class="td">
+									<a href={`/admin/pedidos?q=${encodeURIComponent(c.email)}`} class="flex items-center gap-3">
+										<span class="bg-brand-50 text-brand-600 flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold">{(c.nombre ?? c.email)[0].toUpperCase()}</span>
+										<span class="min-w-0"><span class="hover:text-brand-500 font-medium text-gray-800">{c.nombre ?? c.email}</span><br /><span class="text-theme-xs text-gray-500">{c.nombre ? c.email : ''} {c.nombre ? '·' : ''} desde {dia(c.creado_en)}</span></span>
+									</a>
+								</td>
+								<td class="td">
+									<span class="flex items-center gap-2">
+										{c.telefono && <a href={`tel:${c.telefono}`} class="btn-icono size-8" title={c.telefono} aria-label={`Llamar al ${c.telefono}`}><Phone class="size-4" aria-hidden="true" /></a>}
+										{c.acepta_novedades ? <Insignia color="violeta"><BellRing aria-hidden="true" />Novedades</Insignia> : ''}
+									</span>
+								</td>
+								<td class="td num">{c.pedidos}</td>
+								<td class="td num font-medium text-gray-800">{pesos(c.total_centavos)}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)}
+	</Tarjeta>
+</Panel>

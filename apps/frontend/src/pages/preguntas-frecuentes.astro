@@ -1,0 +1,40 @@
+---
+import { ChevronDown } from '@lucide/astro';
+import Tienda from '../layouts/Tienda.astro';
+import { datosDeLaTienda, jsonLd, parrafos } from '../lib/tienda';
+
+export const prerender = false;
+
+const { tienda } = await datosDeLaTienda(Astro.request);
+const lista = tienda.contenido.contenido_preguntas_frecuentes;
+const preguntas: { pregunta: string; respuesta: string }[] = Array.isArray(lista) ? lista.filter((q) => q?.pregunta && q?.respuesta) : [];
+const datosEstructurados = {
+	'@context': 'https://schema.org',
+	'@type': 'FAQPage',
+	mainEntity: preguntas.map((q) => ({ '@type': 'Question', name: q.pregunta, acceptedAnswer: { '@type': 'Answer', text: q.respuesta } })),
+};
+---
+
+<Tienda titulo="Preguntas frecuentes" descripcion="Envíos, pagos, talles y cambios: respondemos lo que más nos preguntan.">
+	<div class="contenedor max-w-2xl py-8 md:py-12">
+		<h1 class="mb-6 text-2xl font-semibold md:text-3xl">Preguntas frecuentes</h1>
+		{
+			preguntas.length ? (
+				<div class="divide-linea border-linea divide-y border-y">
+					{preguntas.map((q) => (
+						<details class="group py-1">
+							<summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 py-2 font-medium [&::-webkit-details-marker]:hidden">
+								{q.pregunta}
+								<ChevronDown class="size-5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+							</summary>
+							<div class="text-suave space-y-3 pb-4 text-sm leading-relaxed">{parrafos(q.respuesta).map((p) => <p>{p}</p>)}</div>
+						</details>
+					))}
+				</div>
+			) : (
+				<p class="text-suave">Todavía no cargamos las preguntas. Si tenés dudas, <a href="/contacto" class="underline">escribinos</a>.</p>
+			)
+		}
+	</div>
+	{preguntas.length > 0 && <script type="application/ld+json" set:html={jsonLd(datosEstructurados)} />}
+</Tienda>

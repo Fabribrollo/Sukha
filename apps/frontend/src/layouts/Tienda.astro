@@ -1,0 +1,70 @@
+---
+// Layout de la tienda pública: cabecera, contenido y pie. Lo usan todas las páginas salvo el checkout.
+import '../styles/tienda.css';
+import CarritoLateral from '../components/tienda/CarritoLateral.tsx';
+import Cabecera from '../components/tienda/Cabecera.astro';
+import Pie from '../components/tienda/Pie.astro';
+import { canonica as canonicaDe, datosDeLaTienda } from '../lib/tienda';
+
+interface Props {
+  titulo: string;
+  descripcion?: string;
+  // Imagen para compartir en redes (Open Graph): ruta o dirección completa.
+  imagen?: string;
+  canonica?: string;
+  // Páginas que no tienen que aparecer en Google (carrito, seguimiento…).
+  noindex?: boolean;
+  // Tipo de página para Open Graph.
+  tipo?: 'website' | 'product';
+}
+const {
+  titulo,
+  descripcion = 'Sukhä: ropa para mujer. Envíos a todo el país y descuento pagando con transferencia.',
+  imagen,
+  canonica = canonicaDe(Astro.url),
+  noindex = false,
+  tipo = 'website',
+} = Astro.props;
+const { tienda, filtros } = await datosDeLaTienda(Astro.request);
+const tituloCompleto = titulo.includes('Sukhä') ? titulo : `${titulo} | Sukhä`;
+const imagenAbsoluta = imagen ? new URL(imagen, Astro.url.origin).toString() : undefined;
+---
+
+<!doctype html>
+<html lang="es-AR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{tituloCompleto}</title>
+		<meta name="description" content={descripcion} />
+		<link rel="canonical" href={canonica} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		{noindex && <meta name="robots" content="noindex" />}
+		<meta property="og:site_name" content="Sukhä" />
+		<meta property="og:locale" content="es_AR" />
+		<meta property="og:type" content={tipo} />
+		<meta property="og:title" content={tituloCompleto} />
+		<meta property="og:description" content={descripcion} />
+		<meta property="og:url" content={canonica} />
+		{imagenAbsoluta && <meta property="og:image" content={imagenAbsoluta} />}
+		<meta name="twitter:card" content={imagenAbsoluta ? 'summary_large_image' : 'summary'} />
+		<slot name="head" />
+	</head>
+	<body class="flex min-h-screen flex-col">
+		<a href="#contenido" class="focus:bg-primario focus:text-primario-texto sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2">Saltar al contenido</a>
+		<Cabecera tienda={tienda} filtros={filtros} />
+		<main id="contenido" class="flex-1">
+			<slot />
+		</main>
+		<Pie tienda={tienda} filtros={filtros} />
+		<CarritoLateral client:only="preact" maxPorPedido={tienda.maxUnidadesPorPedido} />
+	</body>
+</html>
+
+<script>
+	// Escape cierra el menú del celular.
+	document.addEventListener('keydown', (e) => {
+		const menu = document.getElementById('menu-t') as HTMLInputElement | null;
+		if (e.key === 'Escape' && menu?.checked) menu.checked = false;
+	});
+</script>

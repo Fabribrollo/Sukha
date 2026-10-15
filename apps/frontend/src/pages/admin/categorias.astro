@@ -1,0 +1,95 @@
+---
+import { ChevronDown, FolderTree, Plus, Save, X } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import FilaCategoria from '../../components/panel/FilaCategoria.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { entero, errorDe, marcado, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const id = f.get('id');
+  // La guía de talles se guarda como texto libre; la tienda la muestra en la ficha de los productos de esa categoría.
+  // Si el campo "padreId" no viene (lo desactiva el formulario cuando la categoría ya tiene subcategorías), no se toca.
+  const padre = f.has('padreId') ? { padreId: entero(f, 'padreId') ?? null } : {};
+  const datos = { nombre: txt(f, 'nombre'), guiaTalles: txt(f, 'guiaTalles'), ...padre, ...(id ? { activa: marcado(f, 'activa') } : {}) };
+  const r = id ? await api(Astro.request, `/api/admin/categorias/${id}`, datos, 'PATCH') : await api(Astro.request, '/api/admin/categorias', datos);
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  error = await errorDe(r);
+}
+
+const categorias = await leer<any[]>(Astro.request, '/api/admin/categorias');
+const principales = categorias.filter((c) => !c.padreId);
+const subcategorias = (padreId: number) => categorias.filter((c) => c.padreId === padreId);
+---
+
+<Panel titulo="Categorías" error={error}>
+	<div class="max-w-4xl">
+		<Tarjeta titulo="Categorías" alRas>
+			<FolderTree slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<p slot="acciones" data-estado-categorias role="status" class="text-theme-xs text-gray-500"></p>
+			{principales.length === 0 && <Vacio texto="Ropa, accesorios…"><FolderTree aria-hidden="true" /></Vacio>}
+			<ul data-lista class="divide-y divide-gray-100">
+				{principales.map((p) => {
+					const hijas = subcategorias(p.id);
+					return (
+						<li data-id={p.id} data-oculta={String(p.activa !== 1)} class="group/item bg-white">
+							<details class="group" open>
+								<summary class="cursor-pointer list-none hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+									<FilaCategoria categoria={p} tieneHijas={hijas.length > 0} hijas={hijas.length}>
+										<ChevronDown class="size-4 shrink-0 text-gray-400 transition group-open:rotate-180" aria-hidden="true" />
+									</FilaCategoria>
+								</summary>
+								<ul data-lista class="divide-y divide-gray-100 border-t border-gray-100 bg-gray-50/60 pl-4 sm:pl-8">
+									{hijas.map((h) => (
+										<li data-id={h.id} data-oculta={String(h.activa !== 1)} class="group/item bg-gray-50/60">
+											<FilaCategoria categoria={h} />
+										</li>
+									))}
+								</ul>
+								{hijas.length === 0 && <p class="text-theme-xs border-t border-gray-100 px-5 py-3 text-gray-500 sm:px-6">Todavía no tiene subcategorías. Agregalas abajo, en «Nueva categoría».</p>}
+							</details>
+						</li>
+					);
+				})}
+			</ul>
+			<form method="post" class="flex flex-wrap items-end gap-3 border-t border-gray-100 p-5 sm:px-6">
+				<input type="hidden" name="accion" value="categoria" />
+				<Campo etiqueta="Nueva categoría" nombre="nombre" required maxlength="60" class="min-w-40 flex-1" />
+				<Campo etiqueta="Dentro de" nombre="padreId" tipo="select" class="w-44">
+					<option value="">Ninguna (principal)</option>
+					{principales.map((p) => <option value={p.id}>{p.nombre}</option>)}
+				</Campo>
+				<button class="btn btn-primario" title="Agregar categoría" aria-label="Agregar categoría"><Plus class="size-4" aria-hidden="true" /></button>
+			</form>
+		</Tarjeta>
+	</div>
+
+	<dialog id="editar-categoria" class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="editar-categoria-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="editar-categoria-titulo" class="text-base font-medium text-gray-800">Editar categoría</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<input type="hidden" name="accion" value="categoria" /><input type="hidden" name="id" />
+			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" />
+			<Campo etiqueta="Dentro de" nombre="padreId" tipo="select" ayuda="Para convertirla en subcategoría, elegí la categoría principal. Solo hay un nivel de subcategorías.">
+				<option value="">Ninguna (categoría principal)</option>
+				{principales.map((p) => <option value={p.id}>{p.nombre}</option>)}
+			</Campo>
+			<p data-aviso-hijas class="text-theme-xs hidden text-gray-500">Tiene subcategorías, así que se mantiene como categoría principal.</p>
+			<Campo etiqueta="Guía de talles" nombre="guiaTalles" tipo="area" placeholder="S: busto 88 cm, cintura 68 cm…" ayuda="Se muestra en la ficha de los productos de esta categoría. Las subcategorías sin guía usan la de su categoría principal." />
+			<div class="flex items-center justify-between gap-3">
+				<Interruptor etiqueta="Visible" nombre="activa" />
+				<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+			</div>
+		</form>
+	</dialog>
+</Panel>
+<script src="../../scripts/categorias.ts"></script>

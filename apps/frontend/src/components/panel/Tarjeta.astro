@@ -1,0 +1,27 @@
+---
+// Tarjeta de TailAdmin: borde suave, título opcional con ícono y un lugar a la derecha para acciones.
+interface Props {
+  titulo?: string;
+  class?: string;
+  // Sin relleno interno: para tarjetas que contienen una tabla de borde a borde.
+  alRas?: boolean;
+  id?: string;
+}
+const { titulo, class: clase, alRas = false, id } = Astro.props;
+const conCabecera = titulo || Astro.slots.has('icono') || Astro.slots.has('acciones');
+---
+
+<section id={id} class:list={['rounded-2xl border border-gray-200 bg-white', clase]}>
+	{conCabecera && (
+		<header class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+			<h2 class="flex items-center gap-2.5 text-base font-medium text-gray-800">
+				<slot name="icono" />
+				{titulo}
+			</h2>
+			<div class="flex items-center gap-2"><slot name="acciones" /></div>
+		</header>
+	)}
+	<div class:list={[conCabecera && 'border-t border-gray-100', !alRas && 'p-5 sm:p-6']}>
+		<slot />
+	</div>
+</section>

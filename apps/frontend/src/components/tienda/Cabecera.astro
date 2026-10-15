@@ -1,0 +1,102 @@
+---
+// Cabecera de la tienda: barra de anuncios, logo, menú (en el celular, un panel lateral), buscador y carrito.
+// El menú del celular se abre con una casilla oculta (#menu-t), sin JavaScript.
+import { ChevronDown, Menu, MessageCircle, PackageSearch, ShoppingBag, X } from '@lucide/astro';
+import IconoInstagram from './IconoInstagram.astro';
+import { enlaceWhatsapp, type Filtros, type Tienda } from '../../lib/formato';
+import Buscador from './Buscador.tsx';
+import ContadorCarrito from './ContadorCarrito.tsx';
+import Logo from './Logo.astro';
+
+interface Props {
+  tienda: Tienda;
+  filtros: Filtros;
+}
+const { tienda, filtros } = Astro.props;
+const ruta = Astro.url.pathname;
+const actual = (href: string) => ruta === href || (href !== '/' && ruta.startsWith(`${href}/`));
+// En escritorio, hasta 6 categorías en el menú y el resto en "Más".
+const visibles = filtros.categorias.slice(0, 6);
+const resto = filtros.categorias.slice(6);
+const enlace = 'text-sm font-medium inline-flex min-h-11 items-center hover:underline underline-offset-4 aria-[current=page]:underline';
+---
+
+{tienda.barraAnuncios && <div class="bg-primario text-primario-texto px-4 py-2 text-center text-sm">{tienda.barraAnuncios}</div>}
+
+<input type="checkbox" id="menu-t" class="peer sr-only" aria-label="Abrir o cerrar el menú" />
+
+<!-- Menú del celular -->
+<aside class="fixed inset-y-0 left-0 z-50 flex w-[85%] max-w-sm -translate-x-full flex-col bg-white shadow-xl transition-transform duration-200 peer-checked:translate-x-0 md:hidden" aria-label="Menú">
+	<div class="border-linea flex h-16 shrink-0 items-center justify-between border-b px-4">
+		<Logo />
+		<label for="menu-t" class="boton-icono" title="Cerrar menú"><X class="size-5" aria-hidden="true" /></label>
+	</div>
+	<nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="Menú principal">
+		<ul class="divide-linea divide-y">
+			<li><a href="/productos" class="block py-3 text-base font-medium">Todos los productos</a></li>
+			{filtros.categorias.map((c) => c.hijas.length === 0 ? (
+				<li><a href={`/categoria/${c.slug}`} class="block py-3 text-base">{c.nombre}</a></li>
+			) : (
+				<li>
+					<details class="group">
+						<summary class="flex min-h-11 cursor-pointer list-none items-center justify-between py-3 text-base [&::-webkit-details-marker]:hidden">{c.nombre}<ChevronDown class="size-5 transition group-open:rotate-180" aria-hidden="true" /></summary>
+						<ul class="border-linea mb-2 ml-1 border-l pl-4">
+							<li><a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center text-sm font-medium">Ver todo {c.nombre}</a></li>
+							{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="text-suave flex min-h-11 items-center text-sm">{h.nombre}</a></li>)}
+						</ul>
+					</details>
+				</li>
+			))}
+			{filtros.colecciones.map((c) => <li><a href={`/coleccion/${c.slug}`} class="block py-3 text-base">{c.nombre}</a></li>)}
+			<li><a href="/ofertas" class="text-oferta block py-3 text-base font-semibold">Ofertas</a></li>
+		</ul>
+		<ul class="border-linea mt-2 space-y-1 border-t pt-3 text-sm">
+			<li><a href="/pedido/buscar" class="flex items-center gap-2 min-h-11 py-2"><PackageSearch class="size-4" aria-hidden="true" />Buscar mi pedido</a></li>
+			<li><a href="/preguntas-frecuentes" class="flex min-h-11 items-center py-2">Preguntas frecuentes</a></li>
+			<li><a href="/contacto" class="flex min-h-11 items-center py-2">Contacto</a></li>
+			{tienda.instagram && <li><a href={`https://instagram.com/${tienda.instagram}`} rel="noopener" class="flex items-center gap-2 min-h-11 py-2"><IconoInstagram class="size-4" aria-hidden="true" />Instagram</a></li>}
+			{tienda.whatsapp && <li><a href={enlaceWhatsapp(tienda.whatsapp)} rel="noopener" class="flex items-center gap-2 min-h-11 py-2"><MessageCircle class="size-4" aria-hidden="true" />WhatsApp</a></li>}
+		</ul>
+	</nav>
+</aside>
+<label for="menu-t" class="fixed inset-0 z-40 hidden bg-black/50 peer-checked:block md:peer-checked:hidden" aria-hidden="true"></label>
+
+<header class="border-linea sticky top-0 z-30 border-b bg-white">
+	<div class="contenedor flex h-16 items-center gap-2">
+		<label for="menu-t" class="boton-icono md:hidden" title="Abrir menú"><Menu class="size-6" aria-hidden="true" /></label>
+		<Logo class="max-md:absolute max-md:left-1/2 max-md:-translate-x-1/2" />
+
+		<nav class="hidden flex-1 justify-center gap-6 md:flex" aria-label="Menú principal">
+			<a href="/" class={enlace} aria-current={ruta === '/' ? 'page' : undefined}>Inicio</a>
+			{visibles.map((c) => c.hijas.length === 0 ? (
+				<a href={`/categoria/${c.slug}`} class={enlace} aria-current={actual(`/categoria/${c.slug}`) ? 'page' : undefined}>{c.nombre}</a>
+			) : (
+				<div class="group relative">
+					<a href={`/categoria/${c.slug}`} class:list={[enlace, 'gap-1']} aria-current={actual(`/categoria/${c.slug}`) || c.hijas.some((h) => actual(`/categoria/${h.slug}`)) ? 'page' : undefined}>{c.nombre}<ChevronDown class="size-4" aria-hidden="true" /></a>
+					<ul class="border-linea rounded-tienda invisible absolute top-full left-0 z-40 min-w-48 border bg-white py-1 opacity-0 shadow-lg transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+						<li><a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center px-4 text-sm font-medium hover:bg-gris">Ver todo {c.nombre}</a></li>
+						{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="flex min-h-11 items-center px-4 text-sm hover:bg-gris">{h.nombre}</a></li>)}
+					</ul>
+				</div>
+			))}
+			{resto.length > 0 && (
+				<details class="relative">
+					<summary class:list={[enlace, 'flex items-center gap-1']}>Más <ChevronDown class="size-4" aria-hidden="true" /></summary>
+					<ul class="border-linea rounded-tienda absolute top-full left-0 z-40 mt-1 min-w-44 border bg-white py-1 shadow-lg">
+						{resto.map((c) => <li><a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center px-4 text-sm hover:bg-gris">{c.nombre}</a></li>)}
+					</ul>
+				</details>
+			)}
+			<a href="/ofertas" class:list={[enlace, 'text-oferta']} aria-current={actual('/ofertas') ? 'page' : undefined}>Ofertas</a>
+		</nav>
+
+		<div class="ml-auto flex items-center gap-1">
+			<Buscador client:idle />
+			<a href="/pedido/buscar" class="boton-icono hidden md:inline-flex" title="Buscar mi pedido" aria-label="Buscar mi pedido"><PackageSearch class="size-5" aria-hidden="true" /></a>
+			<!-- Depende de lo guardado en el navegador: se dibuja solo ahí (si no, la cantidad queda desactualizada). Mientras carga, la bolsa sin número. -->
+			<ContadorCarrito client:only="preact">
+				<a href="/carrito" slot="fallback" class="boton-icono" title="Carrito" aria-label="Carrito"><ShoppingBag class="size-6" aria-hidden="true" /></a>
+			</ContadorCarrito>
+		</div>
+	</div>
+</header>

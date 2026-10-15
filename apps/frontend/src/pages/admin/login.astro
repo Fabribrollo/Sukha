@@ -1,0 +1,54 @@
+---
+import '../../styles/panel.css';
+import { CircleAlert, LogIn } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import { api } from '../../lib/api';
+import { errorDe } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const salir = form.get('accion') === 'salir';
+  const r = salir
+    ? await api(Astro.request, '/api/admin/logout', {})
+    : await api(Astro.request, '/api/admin/login', { email: form.get('email'), contrasena: form.get('contrasena') });
+  if (r.ok || salir) {
+    // La cookie de sesión (o su borrado) viene del backend y se le pasa tal cual al navegador.
+    return new Response(null, {
+      status: 303,
+      headers: { location: salir ? '/admin/login' : '/admin', 'set-cookie': r.headers.get('set-cookie') ?? '' },
+    });
+  }
+  error = await errorDe(r);
+}
+---
+
+<html lang="es-AR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>Ingresar · Panel Sukhä</title>
+	</head>
+	<body class="flex min-h-screen items-center justify-center p-4">
+		<main class="w-full max-w-sm">
+			<h1 class="text-title-sm mb-8 text-center font-semibold tracking-[0.25em] text-gray-900">SUKHÄ</h1>
+			<div class="shadow-theme-sm rounded-2xl border border-gray-200 bg-white p-6 sm:p-8">
+				{error && (
+					<div class="border-error-500 bg-error-50 mb-5 flex items-start gap-3 rounded-xl border p-3" role="alert">
+						<CircleAlert class="text-error-500 size-5 shrink-0" aria-hidden="true" />
+						<p class="text-sm text-gray-800">{error}</p>
+					</div>
+				)}
+				<form method="post" class="space-y-5">
+					<Campo etiqueta="Email" nombre="email" tipo="email" required autocomplete="username" autofocus />
+					<Campo etiqueta="Contraseña" nombre="contrasena" tipo="password" required autocomplete="current-password" />
+					<button class="btn btn-primario w-full"><LogIn class="size-4" aria-hidden="true" />Ingresar</button>
+				</form>
+			</div>
+		</main>
+	</body>
+</html>

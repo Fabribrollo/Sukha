@@ -1,0 +1,14 @@
+---
+import BuscarPedido from '../../components/tienda/BuscarPedido.tsx';
+import Tienda from '../../layouts/Tienda.astro';
+
+export const prerender = false;
+---
+
+<Tienda titulo="Buscar mi pedido" descripcion="Seguí tu compra con el número de pedido y tu email." noindex>
+	<div class="contenedor max-w-lg py-8 md:py-10">
+		<h1 class="mb-2 text-2xl font-semibold md:text-3xl">Buscar mi pedido</h1>
+		<p class="text-suave mb-8 text-sm">Escribí el número que te llegó por email (empieza con SUK) y el email que usaste al comprar.</p>
+		<BuscarPedido client:only="preact" modo="buscar" />
+	</div>
+</Tienda>

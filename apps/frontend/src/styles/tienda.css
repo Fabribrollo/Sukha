@@ -1,0 +1,100 @@
+/* Tienda pública de Sukhä, sobre Tailwind 4.
+   Estética genérica y neutra, estilo Tiendanube. Para aplicar la marca más adelante alcanza con
+   cambiar los valores de este bloque (@theme): colores, radio y tipografía. */
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+
+@theme {
+  --color-fondo: #ffffff;
+  --color-texto: #1a1a1a;
+  --color-suave: #6b6b6b;
+  --color-linea: #e5e5e5;
+  --color-gris: #f5f5f5;
+  --color-primario: #1a1a1a;
+  --color-primario-texto: #ffffff;
+  --color-oferta: #d0021b;
+  --color-exito: #1e7e34;
+  --color-aviso: #8a5a00;
+  --color-aviso-fondo: #fff4d6;
+
+  --radius-tienda: 4px;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-padding-top: 5rem;
+  }
+  body {
+    @apply bg-fondo text-texto font-sans antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  /* El foco siempre se ve, con el color del texto. */
+  :focus-visible {
+    outline: 2px solid var(--color-texto);
+    outline-offset: 2px;
+  }
+  summary {
+    cursor: pointer;
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Contenedor centrado: 1200px de ancho máximo y 16px de margen lateral. */
+@utility contenedor {
+  @apply mx-auto w-full max-w-[1200px] px-4;
+}
+
+/* ───────────── Botones ───────────── */
+@utility boton {
+  @apply rounded-tienda inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility boton-primario {
+  @apply bg-primario text-primario-texto hover:opacity-90;
+}
+@utility boton-secundario {
+  @apply text-texto border-linea hover:border-texto border bg-white;
+}
+/* Botón de solo ícono: lleva siempre title y aria-label. 44px, el mínimo cómodo para tocar. */
+@utility boton-icono {
+  @apply rounded-tienda text-texto relative inline-flex size-11 cursor-pointer items-center justify-center transition hover:bg-gris;
+}
+
+/* ───────────── Campos ───────────── */
+@utility campo {
+  @apply rounded-tienda border-linea text-texto focus:border-texto focus:ring-texto min-h-12 w-full border bg-white px-4 text-base placeholder:text-suave/70 focus:ring-1;
+}
+@utility etiqueta {
+  @apply text-suave mb-1 block text-sm;
+}
+
+/* ───────────── Piezas ───────────── */
+@utility insignia {
+  @apply rounded-tienda inline-flex items-center px-2 py-0.5 text-xs font-semibold;
+}
+/* Lo que se muestra mientras carga una foto, o cuando no hay. */
+@utility foto-vacia {
+  @apply bg-gris text-suave flex items-center justify-center;
+}
+/* Fila que se desliza con el dedo, con los elementos que se alinean al soltar. */
+@utility fila-deslizable {
+  @apply -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] md:mx-0 md:px-0;
+}
+@utility fila-deslizable-item {
+  @apply w-[44%] shrink-0 snap-start sm:w-[30%] md:w-[calc((100%-3rem)/4)];
+}

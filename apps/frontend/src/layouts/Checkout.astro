@@ -1,0 +1,41 @@
+---
+// Layout del checkout: cabecera mínima (solo el logo y "compra segura"), sin menú ni buscador, para que nada distraiga.
+import '../styles/tienda.css';
+import { Lock } from '@lucide/astro';
+import Logo from '../components/tienda/Logo.astro';
+
+interface Props {
+  titulo: string;
+}
+const { titulo } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es-AR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{titulo} | Sukhä</title>
+		<meta name="robots" content="noindex" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	</head>
+	<body class="flex min-h-screen flex-col">
+		<header class="border-linea border-b">
+			<div class="contenedor flex h-16 items-center justify-between">
+				<Logo />
+				<p class="text-suave flex items-center gap-2 text-sm"><Lock class="size-4" aria-hidden="true" />Compra 100% segura</p>
+			</div>
+		</header>
+		<main class="contenedor flex-1 py-6 md:py-10">
+			<h1 class="mb-6 text-2xl font-semibold md:text-3xl">Finalizar compra</h1>
+			<slot />
+		</main>
+		<footer class="border-linea text-suave border-t py-6 text-center text-xs">
+			<p class="contenedor flex flex-wrap justify-center gap-x-5 gap-y-1">
+				<a href="/cambios-y-devoluciones" class="underline">Cambios y devoluciones</a>
+				<a href="/contacto" class="underline">Contacto</a>
+				<a href="/arrepentimiento" class="underline">Botón de arrepentimiento</a>
+			</p>
+		</footer>
+	</body>
+</html>

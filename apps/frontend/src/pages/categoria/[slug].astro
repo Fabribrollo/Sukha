@@ -1,0 +1,23 @@
+---
+import Listado from '../../components/tienda/Listado.astro';
+import Tienda from '../../layouts/Tienda.astro';
+import { buscarCategoria, canonica, datosDeLaTienda } from '../../lib/tienda';
+import { cargarListado, conCambios, productosNuevos } from '../../lib/listado';
+
+export const prerender = false;
+
+const { tienda, filtros } = await datosDeLaTienda(Astro.request);
+const encontrada = buscarCategoria(filtros.categorias, Astro.params.slug!);
+if (!encontrada) return Astro.rewrite('/404');
+const { categoria, padre, hijas } = encontrada;
+// Las subcategorías se ofrecen como atajos: desde una principal, sus hijas; desde una hija, sus hermanas.
+const migas = padre ? [{ texto: padre.nombre, href: `/categoria/${padre.slug}` }, { texto: categoria.nombre }] : [{ texto: categoria.nombre }];
+const titulo = padre ? `${categoria.nombre} · ${padre.nombre}` : categoria.nombre;
+const listado = await cargarListado(Astro.request, Astro.url, { categoria: categoria.slug });
+if (listado.fueraDeRango) return Astro.redirect(conCambios(Astro.url, { pagina: null }));
+const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(Astro.request);
+---
+
+<Tienda titulo={titulo} descripcion={`${categoria.nombre} de Sukhä. Envíos a todo el país.`} canonica={canonica(Astro.url, ['pagina'])} noindex={listado.filtrado}>
+	<Listado titulo={categoria.nombre} migas={migas} atajos={{ padre: padre ?? categoria, actual: categoria.slug, hijas }} {...listado} filtros={filtros} tienda={tienda} sugeridos={sugeridos} />
+</Tienda>
