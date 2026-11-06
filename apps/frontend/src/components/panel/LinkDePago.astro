@@ -1,0 +1,44 @@
+---
+// Link para que la clienta pague un pedido que espera el pago (venta por WhatsApp o Instagram): la página del pedido, donde
+// paga con Mercado Pago o ve los datos de la transferencia. Copiar el link o el mensaje (para Instagram) y mandarlo por WhatsApp.
+import { Copy, Link, MessageCircle } from '@lucide/astro';
+import { telefonoWhatsapp } from '../../../../backend/src/compartido';
+import { pesos } from '../../lib/panel';
+
+interface Props {
+  pedido: any;
+  tienda: string;
+}
+const { pedido: p, tienda } = Astro.props;
+const link = `${Astro.url.origin}/pedido/${p.token_seguimiento}`;
+const prendas = p.items.map((i: any) => `• ${i.cantidad} × ${i.nombre_producto}${[i.talle, i.color].filter(Boolean).length ? ` (${[i.talle, i.color].filter(Boolean).join(', ')})` : ''}`);
+const mensaje = [
+  `¡Hola ${p.nombre.trim().split(/\s+/)[0]}! Te paso tu pedido ${p.numero} de ${tienda}:`,
+  ...prendas,
+  `Total: ${pesos(p.total_centavos)}`,
+  `${p.metodo_pago === 'mercadopago' ? 'Pagalo acá' : 'Los datos para transferir están acá'}: ${link}`,
+].join('\n');
+// Sin un celular válido, WhatsApp se abre para elegir a quién mandarlo.
+const telefono = telefonoWhatsapp(p.telefono);
+const whatsapp = `https://wa.me/${telefono ?? ''}?text=${encodeURIComponent(mensaje)}`;
+---
+
+<div class="mb-4 space-y-2 rounded-xl bg-gray-50 p-3">
+	<p class="text-theme-xs flex items-center gap-1.5 text-gray-500"><Link class="size-3.5 shrink-0" aria-hidden="true" /><span class="truncate">{new URL(link).host + new URL(link).pathname}</span></p>
+	<div class="flex flex-wrap gap-2">
+		<a href={whatsapp} target="_blank" rel="noopener" class="btn btn-primario"><MessageCircle class="size-4" aria-hidden="true" />Enviar link</a>
+		<button type="button" data-copiar-link={link} class="btn btn-secundario"><Copy class="size-4" aria-hidden="true" />Link</button>
+		<button type="button" data-copiar-link={mensaje} class="btn btn-secundario"><Copy class="size-4" aria-hidden="true" />Mensaje</button>
+	</div>
+</div>
+
+<script>
+	// Copiar: el botón pasa a verde un momento para confirmar.
+	for (const boton of document.querySelectorAll<HTMLButtonElement>('[data-copiar-link]')) {
+		boton.addEventListener('click', async () => {
+			await navigator.clipboard.writeText(boton.dataset.copiarLink!);
+			boton.classList.add('text-success-600');
+			setTimeout(() => boton.classList.remove('text-success-600'), 1500);
+		});
+	}
+</script>

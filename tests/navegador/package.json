@@ -1,0 +1,14 @@
+{
+  "name": "sukha-tests-navegador",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas en un navegador real (Edge de Windows, sin descargar navegadores). Ver README.md.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-reporter=spec",
+    "tienda": "node --test --test-reporter=spec tienda.test.mjs",
+    "panel": "node --test --test-reporter=spec panel.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

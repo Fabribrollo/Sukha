@@ -1,0 +1,102 @@
+---
+// Plantillas de email: se elige una a la izquierda y se edita su asunto y texto, con las variables que se insertan tocándolas
+// y la vista previa con datos de ejemplo, que se actualiza mientras se escribe (scripts/emails.ts). Solo texto: el diseño
+// del email es fijo. «Restaurar» vuelve al texto original.
+import { Mail, MessageCircle, RotateCcw, Save, Send } from '@lucide/astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { errorDe } from '../../lib/panel';
+
+export const prerender = false;
+
+type Plantilla = { tipo: string; nombre: string; cuando: string; esMensaje: boolean; asunto: string; texto: string; modificada: boolean; variables: { clave: string; descripcion: string }[] };
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const tipo = String(f.get('tipo'));
+  const ruta = `/api/admin/plantillas/${encodeURIComponent(tipo)}`;
+  const r = f.get('accion') === 'restaurar' ? await api(Astro.request, ruta, undefined, 'DELETE') : await api(Astro.request, ruta, { asunto: String(f.get('asunto') ?? ''), texto: String(f.get('texto') ?? '') }, 'PUT');
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?t=${encodeURIComponent(tipo)}&ok`, 303);
+  error = await errorDe(r);
+}
+
+const lista = await leer<Plantilla[]>(Astro.request, '/api/admin/plantillas');
+const actual = lista.find((p) => p.tipo === Astro.url.searchParams.get('t')) ?? lista[0];
+const emails = lista.filter((p) => !p.esMensaje);
+const mensajes = lista.filter((p) => p.esMensaje);
+const esWhatsapp = actual.tipo === 'carrito_whatsapp';
+---
+
+<Panel titulo="Emails" error={error}>
+	<div class="grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)]">
+		<nav class="space-y-5" aria-label="Plantillas">
+			{[{ titulo: 'Emails de pedidos', items: emails }, { titulo: 'Carritos abandonados', items: mensajes }].map((g) => (
+				<div>
+					<h2 class="mb-2 px-1 text-sm font-semibold text-gray-800">{g.titulo}</h2>
+					<ul class="space-y-1">
+						{g.items.map((p) => (
+							<li>
+								<a href={`?t=${p.tipo}`} aria-current={p.tipo === actual.tipo ? 'page' : undefined} class:list={['flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm transition', p.tipo === actual.tipo ? 'border-brand-200 bg-brand-50 text-brand-700 font-medium' : 'border-transparent text-gray-700 hover:bg-gray-100']}>
+									<span class="flex items-center gap-2">{p.tipo === 'carrito_whatsapp' ? <MessageCircle class="size-4 shrink-0" aria-hidden="true" /> : <Mail class="size-4 shrink-0" aria-hidden="true" />}{p.nombre}</span>
+									{p.modificada && <Insignia color="azul">Editada</Insignia>}
+								</a>
+							</li>
+						))}
+					</ul>
+				</div>
+			))}
+		</nav>
+
+		<div class="grid gap-5 2xl:grid-cols-2">
+			<Tarjeta titulo={actual.nombre}>
+				<p slot="acciones" class="text-sm text-gray-500">{actual.cuando}</p>
+				<form method="post" data-plantilla={actual.tipo} class="space-y-4">
+					<input type="hidden" name="tipo" value={actual.tipo} />
+					{!esWhatsapp && (
+						<label class="block"><span class="etiqueta">Asunto</span><input name="asunto" value={actual.asunto} maxlength="150" required data-campo class="campo" /></label>
+					)}
+					{esWhatsapp && <input type="hidden" name="asunto" value="" />}
+					<label class="block"><span class="etiqueta">{esWhatsapp ? 'Mensaje' : 'Texto'}</span><textarea name="texto" rows="12" maxlength="3000" required data-campo class="campo h-auto py-3 leading-relaxed">{actual.texto}</textarea></label>
+					<div>
+						<p class="etiqueta">Insertar</p>
+						<div class="flex flex-wrap gap-2">
+							{actual.variables.map((v) => (
+								<button type="button" data-variable={`{{${v.clave}}}`} class="hover:border-brand-300 hover:bg-brand-25 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 transition">{v.descripcion}</button>
+							))}
+						</div>
+					</div>
+					<div class="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+						<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+						{!esWhatsapp && <button type="button" data-probar class="btn btn-secundario"><Send class="size-4" aria-hidden="true" />Enviarme una prueba</button>}
+						{actual.modificada && <button name="accion" value="restaurar" formnovalidate class="btn btn-secundario ml-auto"><RotateCcw class="size-4" aria-hidden="true" />Restaurar el original</button>}
+					</div>
+					<p data-estado role="status" class="text-sm empty:hidden"></p>
+				</form>
+			</Tarjeta>
+
+			<Tarjeta titulo="Vista previa">
+				<div slot="acciones" class="flex gap-1 rounded-lg bg-gray-100 p-1" role="group" aria-label="Tamaño de la vista previa">
+					<button type="button" data-ancho="100%" aria-pressed="true" class="aria-pressed:bg-white aria-pressed:shadow-theme-xs rounded-md px-3 py-1 text-sm text-gray-700">Compu</button>
+					<button type="button" data-ancho="375px" aria-pressed="false" class="aria-pressed:bg-white aria-pressed:shadow-theme-xs rounded-md px-3 py-1 text-sm text-gray-700">Celular</button>
+				</div>
+				{esWhatsapp ? (
+					<div class="rounded-xl bg-[#efeae2] p-4">
+						<p data-vista-mensaje class="ml-auto max-w-sm rounded-xl rounded-tr-none bg-[#d9fdd3] px-3 py-2 text-sm whitespace-pre-line text-gray-900 shadow-sm"></p>
+					</div>
+				) : (
+					<div class="space-y-3">
+						<p class="rounded-lg bg-gray-50 px-3 py-2 text-sm"><span class="text-gray-500">Asunto:</span> <span data-vista-asunto class="font-medium text-gray-900"></span></p>
+						<div class="mx-auto transition-all" data-marco style="width:100%">
+							<iframe data-vista-email title="Vista previa del email" sandbox="" class="h-[28rem] w-full rounded-xl border border-gray-200 bg-white"></iframe>
+						</div>
+					</div>
+				)}
+			</Tarjeta>
+		</div>
+	</div>
+</Panel>
+
+<script src="../../scripts/emails.ts"></script>

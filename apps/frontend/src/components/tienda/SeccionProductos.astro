@@ -1,23 +1,25 @@
 ---
-// Sección de la portada: título, link "Ver todos" y una grilla de productos. Si no hay productos, no se muestra.
+// Sección de la portada: título, link «Ver todos» (opcional) y una grilla de productos. Si no hay productos, no se muestra.
 import type { Tienda, TarjetaDeProducto } from '../../lib/formato';
 import Grilla from './Grilla.astro';
 
 interface Props {
   titulo: string;
-  href: string;
+  // Sin enlace (null o vacío), no se muestra «Ver todos».
+  href?: string | null;
   productos: TarjetaDeProducto[];
   tienda: Tienda;
 }
 const { titulo, href, productos, tienda } = Astro.props;
+const idTitulo = `sec-${(href || titulo).replace(/\W/g, '')}`;
 ---
 
 {productos.length > 0 && (
-	<section class="contenedor mt-12 md:mt-16" aria-labelledby={`sec-${href.replace(/\W/g, '')}`}>
-		<div class="mb-5 flex items-end justify-between gap-4">
-			<h2 id={`sec-${href.replace(/\W/g, '')}`} class="text-xl font-semibold md:text-2xl">{titulo}</h2>
-			<a href={href} class="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 hover:no-underline">Ver todos</a>
+	<section class="contenedor mt-16 md:mt-[120px]" aria-labelledby={idTitulo}>
+		<div class="mb-8 flex items-baseline justify-between gap-4 md:mb-10">
+			<h2 id={idTitulo} class="text-[32px] leading-none md:text-[44px]">{titulo}</h2>
+			{href && <a href={href} class="border-texto inline-flex border-b pb-0.5 text-[15px]">Ver todo</a>}
 		</div>
-		<Grilla productos={productos} tienda={tienda} />
+		<Grilla productos={productos} tienda={tienda} transferenciaEscritorio />
 	</section>
 )}

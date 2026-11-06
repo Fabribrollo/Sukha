@@ -18,3 +18,5 @@ export function idDe(c: Context<AppEnv>, nombre = 'id') {
 }
 
 export const ahora = () => new Date().toISOString();
+// Lo mismo, dentro de SQL (mismo formato que las columnas *_en).
+export const AHORA_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";

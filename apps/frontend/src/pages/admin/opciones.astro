@@ -1,7 +1,8 @@
 ---
-import { Palette, Plus, Ruler } from '@lucide/astro';
+import { GripVertical, Palette, Pencil, Plus, Ruler, Save, X } from '@lucide/astro';
 import Campo from '../../components/panel/Campo.astro';
 import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
 import Panel from '../../layouts/Panel.astro';
 import { api, leer } from '../../lib/api';
 import { errorDe, txt } from '../../lib/panel';
@@ -9,49 +10,99 @@ import { errorDe, txt } from '../../lib/panel';
 export const prerender = false;
 
 let error = '';
+let altaFallida = '';
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
+  const accion = String(f.get('accion'));
+  const id = f.get('id');
   const r =
-    f.get('accion') === 'talle'
-      ? await api(Astro.request, '/api/admin/talles', { nombre: txt(f, 'nombre') })
-      : await api(Astro.request, '/api/admin/colores', { nombre: txt(f, 'nombre'), hex: txt(f, 'hex') });
+    accion === 'talle'
+      ? await api(Astro.request, id ? `/api/admin/talles/${id}` : '/api/admin/talles', { nombre: txt(f, 'nombre') }, id ? 'PATCH' : 'POST')
+      : await api(Astro.request, id ? `/api/admin/colores/${id}` : '/api/admin/colores', { nombre: txt(f, 'nombre'), hex: txt(f, 'hex') }, id ? 'PATCH' : 'POST');
   // Redirigir después de guardar evita que recargar la página repita el alta.
   if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  if (!id) altaFallida = accion;
   error = await errorDe(r);
 }
 
 const { talles, colores } = await leer<{ talles: any[]; colores: any[] }>(Astro.request, '/api/admin/opciones');
+const dialogo = 'm-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl p-0 backdrop:bg-gray-900/50';
 ---
 
 <Panel titulo="Talles y colores" error={error}>
 	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
 		<Tarjeta titulo="Talles">
 			<Ruler slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-			<ul class="mb-5 flex flex-wrap gap-2">
-				{talles.map((t) => <li class="flex h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700">{t.nombre}</li>)}
+			<button slot="acciones" type="button" data-alta="alta-talle" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</button>
+			{talles.length === 0 && <Vacio texto="Todavía no hay talles"><Ruler aria-hidden="true" /></Vacio>}
+			<ul data-lista data-orden="/api/admin/talles/orden" class="divide-y divide-gray-100 rounded-xl border border-gray-200">
+				{talles.map((t) => (
+					<li data-id={t.id} class="flex items-center gap-1 bg-white py-1.5 pr-2 pl-1">
+						<button type="button" data-asa class="btn-icono size-9 cursor-grab touch-none" title="Arrastrar para ordenar" aria-label={`Ordenar el talle ${t.nombre}`}><GripVertical class="size-4" aria-hidden="true" /></button>
+						<span class="flex-1 text-sm font-medium text-gray-700">{t.nombre}</span>
+						<button type="button" data-editar="editar-talle" data-datos={JSON.stringify({ id: t.id, nombre: t.nombre })} class="btn-icono" title="Editar" aria-label={`Editar el talle ${t.nombre}`}><Pencil class="size-5" aria-hidden="true" /></button>
+					</li>
+				))}
 			</ul>
-			<form method="post" class="flex items-end gap-3">
-				<input type="hidden" name="accion" value="talle" />
-				<Campo etiqueta="Nuevo talle" nombre="nombre" required maxlength="20" class="flex-1" />
-				<button class="btn btn-primario" title="Agregar talle" aria-label="Agregar talle"><Plus class="size-4" aria-hidden="true" /></button>
-			</form>
+			<p data-estado role="status" class="text-theme-xs mt-3 min-h-4 text-gray-500">El orden se ve en los filtros y en la ficha de la tienda.</p>
 		</Tarjeta>
 
 		<Tarjeta titulo="Colores">
 			<Palette slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-			<ul class="mb-5 flex flex-wrap gap-2">
+			<button slot="acciones" type="button" data-alta="alta-color" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</button>
+			{colores.length === 0 && <Vacio texto="Todavía no hay colores"><Palette aria-hidden="true" /></Vacio>}
+			<ul data-lista data-orden="/api/admin/colores/orden" class="divide-y divide-gray-100 rounded-xl border border-gray-200">
 				{colores.map((c) => (
-					<li class="flex h-10 items-center gap-2 rounded-lg border border-gray-200 pr-3 pl-2 text-sm font-medium text-gray-700">
-						<span class="size-6 rounded-full border border-gray-200" style={`background:${c.hex ?? 'transparent'}`} aria-hidden="true"></span>{c.nombre}
+					<li data-id={c.id} class="flex items-center gap-1 bg-white py-1.5 pr-2 pl-1">
+						<button type="button" data-asa class="btn-icono size-9 cursor-grab touch-none" title="Arrastrar para ordenar" aria-label={`Ordenar el color ${c.nombre}`}><GripVertical class="size-4" aria-hidden="true" /></button>
+						<span class="size-6 shrink-0 rounded-full border border-gray-200" style={`background:${c.hex ?? 'transparent'}`} aria-hidden="true"></span>
+						<span class="ml-2 flex-1 text-sm font-medium text-gray-700">{c.nombre}</span>
+						<button type="button" data-editar="editar-color" data-datos={JSON.stringify({ id: c.id, nombre: c.nombre, hex: c.hex ?? '#888888' })} class="btn-icono" title="Editar" aria-label={`Editar el color ${c.nombre}`}><Pencil class="size-5" aria-hidden="true" /></button>
 					</li>
 				))}
 			</ul>
-			<form method="post" class="flex items-end gap-3">
-				<input type="hidden" name="accion" value="color" />
-				<Campo etiqueta="Nuevo color" nombre="nombre" required maxlength="40" class="flex-1" />
-				<Campo etiqueta="Tono" nombre="hex" tipo="color" valor="#888888" class="w-16" />
-				<button class="btn btn-primario" title="Agregar color" aria-label="Agregar color"><Plus class="size-4" aria-hidden="true" /></button>
-			</form>
+			<p data-estado role="status" class="text-theme-xs mt-3 min-h-4 text-gray-500">El orden se ve en los filtros y en la ficha de la tienda.</p>
 		</Tarjeta>
 	</div>
+
+	{[
+		['alta-talle', 'Nuevo talle', 'talle', false, altaFallida === 'talle'],
+		['editar-talle', 'Editar talle', 'talle', true, false],
+		['alta-color', 'Nuevo color', 'color', false, altaFallida === 'color'],
+		['editar-color', 'Editar color', 'color', true, false],
+	].map(([id, titulo, accion, edicion, abrir]) => (
+		<dialog id={id as string} data-abrir={abrir ? '' : undefined} class={dialogo} aria-labelledby={`${id}-titulo`}>
+			<form method="post" class="space-y-4 p-5 sm:p-6">
+				<div class="flex items-center justify-between gap-3">
+					<h2 id={`${id}-titulo`} class="text-base font-medium text-gray-800">{titulo}</h2>
+					<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+				</div>
+				<input type="hidden" name="accion" value={accion as string} />
+				{edicion && <input type="hidden" name="id" />}
+				<div class="flex items-end gap-3">
+					<Campo etiqueta="Nombre" nombre="nombre" required maxlength={accion === 'talle' ? '20' : '40'} class="flex-1" />
+					{accion === 'color' && <Campo etiqueta="Tono" nombre="hex" tipo="color" valor="#888888" class="w-16" />}
+				</div>
+				<button class="btn btn-primario">{edicion ? <Save class="size-4" aria-hidden="true" /> : <Plus class="size-4" aria-hidden="true" />}{edicion ? 'Guardar' : 'Agregar'}</button>
+			</form>
+		</dialog>
+	))}
 </Panel>
+
+<script src="../../scripts/alta.ts"></script>
+<script>
+	import { ordenable } from '../../scripts/ordenable';
+
+	// El orden se guarda solo al soltar; el aviso queda debajo de la lista.
+	for (const lista of document.querySelectorAll<HTMLElement>('[data-orden]')) {
+		const estado = lista.parentElement!.querySelector<HTMLElement>('[data-estado]')!;
+		ordenable(lista, {
+			asa: '[data-asa]',
+			guardar: async (ids) => {
+				estado.textContent = 'Guardando…';
+				const r = await fetch(lista.dataset.orden!, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) }).catch(() => null);
+				estado.textContent = r?.ok ? 'Orden guardado.' : 'No se pudo guardar el orden. Recargá la página.';
+			},
+		});
+	}
+</script>

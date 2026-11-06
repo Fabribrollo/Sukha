@@ -31,7 +31,11 @@ export const limiteCheckout = createMiddleware<AppEnv>(async (c, next) => {
 
 // Máximo 120 pedidos por minuto por IP a la API pública (binding LIMITE_PUBLICO).
 // Frena a quien quiera adivinar cupones o gastar la cuota gratuita de la base; no afecta una navegación normal.
+// Las llamadas que hacen las páginas desde el servidor del frontend (marca x-sukha-interno) no cuentan: si no, cada página
+// gastaría dos o tres del cupo de la visita. Nadie más puede poner la marca: el backend no tiene URL pública y el proxy
+// de /api/* del frontend la borra de lo que manda el navegador.
 export const limitePublico = createMiddleware<AppEnv>(async (c, next) => {
+  if (c.req.header('x-sukha-interno')) return next();
   const ip = c.req.header('cf-connecting-ip') ?? 'local';
   if (!(await c.env.LIMITE_PUBLICO.limit({ key: ip })).success) {
     return c.json({ error: 'Demasiados pedidos seguidos. Probá de nuevo en un minuto.' }, 429);
@@ -51,7 +55,8 @@ export const mismoOrigen = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-// Máximo 3 pedidos nuevos por minuto por IP (binding LIMITE_PEDIDOS). Nadie compra más rápido que eso a mano.
+// Máximo 10 pedidos nuevos por minuto por IP (binding LIMITE_PEDIDOS). Alcanza para varias clientas detrás de una misma
+// IP de celular (CGNAT); a un robot lo frena además el tope de pedidos sin pagar por IP y por email.
 export const limitePedidos = createMiddleware<AppEnv>(async (c, next) => {
   const ip = c.req.header('cf-connecting-ip') ?? 'local';
   if (!(await c.env.LIMITE_PEDIDOS.limit({ key: ip })).success) {

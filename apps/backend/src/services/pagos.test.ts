@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { armarEmail } from './emails.service';
-import { TRANSICIONES, motivoBloqueo } from './estados.service';
+import { TRANSICIONES } from '../compartido';
+import { motivoBloqueo } from './estados.service';
 import { firmaValida } from './pagos.service';
 
 const secreto = 'clave-de-prueba';
@@ -52,4 +53,37 @@ test('emails: los datos que escribe la clienta no pueden inyectar HTML', () => {
   expect(email.html).toContain('sukha.alias');
   expect(email.html).toContain('https://sukhaind.com.ar/pedido/abc');
   expect(armarEmail('tipo_que_no_existe', pedido, config, '')).toBeNull();
+});
+
+test('webhook: un pago que Mercado Pago no conoce se da por recibido en lugar de fallar', async () => {
+  const { procesarPago } = await import('./pagos.service');
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{"message":"Payment not found"}', { status: 404 })) as typeof fetch;
+  try {
+    expect(await procesarPago({ MP_ACCESS_TOKEN: 'x' } as Env, '123')).toBe('pago_inexistente');
+    // Cualquier otro error sigue siendo error: Mercado Pago tiene que reintentar.
+    globalThis.fetch = (async () => new Response('boom', { status: 500 })) as typeof fetch;
+    await expect(procesarPago({ MP_ACCESS_TOKEN: 'x' } as Env, '123')).rejects.toThrow();
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test('reembolso desde el panel: pide la devolución completa a Mercado Pago, con clave de idempotencia, y falla sin pago aprobado', async () => {
+  const { reembolsarEnMercadoPago } = await import('./pagos.service');
+  const real = globalThis.fetch;
+  const llamadas: { url: string; init?: RequestInit }[] = [];
+  globalThis.fetch = (async (url: string, init?: RequestInit) => (llamadas.push({ url, init }), new Response('{}', { status: 201 }))) as any;
+  try {
+    const pedido = { numero: 'SUK-0007', pagos: [{ proveedor: 'mercadopago', estado: 'aprobado', id_externo: '555' }] } as any;
+    await reembolsarEnMercadoPago({ MP_ACCESS_TOKEN: 'x' } as any, pedido);
+    expect(llamadas).toHaveLength(1);
+    expect(llamadas[0].url).toBe('https://api.mercadopago.com/v1/payments/555/refunds');
+    expect(llamadas[0].init?.method).toBe('POST');
+    expect((llamadas[0].init?.headers as Record<string, string>)['x-idempotency-key']).toBe('reembolso-SUK-0007-555');
+    await expect(reembolsarEnMercadoPago({ MP_ACCESS_TOKEN: 'x' } as any, { numero: 'SUK-0008', pagos: [{ proveedor: 'transferencia', estado: 'aprobado', id_externo: null }] } as any)).rejects.toThrow(/pago aprobado/);
+    expect(llamadas).toHaveLength(1);
+  } finally {
+    globalThis.fetch = real;
+  }
 });

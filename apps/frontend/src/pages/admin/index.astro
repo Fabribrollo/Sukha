@@ -1,5 +1,5 @@
 ---
-import { Banknote, CircleAlert, CircleDollarSign, Flame, MailWarning, PackageOpen, ShoppingBag, TrendingUp, TriangleAlert, Undo2 } from '@lucide/astro';
+import { Banknote, CircleAlert, CircleCheck, CircleDollarSign, MailWarning, PackageOpen, ShoppingBag, TrendingUp, TriangleAlert, Undo2 } from '@lucide/astro';
 import Insignia from '../../components/panel/Insignia.astro';
 import Metrica from '../../components/panel/Metrica.astro';
 import Tarjeta from '../../components/panel/Tarjeta.astro';
@@ -21,22 +21,30 @@ const dias = Array.from({ length: 14 }, (_, i) => {
   const fecha = new Date(Date.now() - (13 - i) * 86_400_000 - 3 * 3_600_000).toISOString().slice(0, 10);
   return { fecha, etiqueta: `${fecha.slice(8)}/${fecha.slice(5, 7)}`, total: porDia.get(fecha)?.total_centavos ?? 0, ventas: porDia.get(fecha)?.pedidos ?? 0 };
 });
+const paraHacer = [
+  ['Transferencias por confirmar', hoy.transferencias_por_confirmar, '/admin/pedidos?estado=pendiente_pago', Banknote],
+  ['Por despachar', hoy.por_despachar, '/admin/pedidos?estado=pagado,en_preparacion', PackageOpen],
+  ['Pagos a revisar', hoy.a_revisar, '/admin/pedidos?estado=a_revisar', CircleAlert],
+  ['Post-venta abierta', hoy.solicitudes_abiertas, '/admin/solicitudes', Undo2],
+].filter(([, n]) => (n as number) > 0) as [string, number, string, any][];
 const maximo = Math.max(1, ...dias.map((d) => d.total));
 ---
 
 <Panel titulo="Inicio">
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-		<Metrica etiqueta="Ventas de hoy" valor={hoy.ventas} color="azul"><ShoppingBag aria-hidden="true" /></Metrica>
-		<Metrica etiqueta="Facturado hoy" valor={pesos(hoy.total_centavos)} color="verde"><CircleDollarSign aria-hidden="true" /></Metrica>
-		<Metrica etiqueta="Ventas en 30 días" valor={ventas30} color="violeta"><TrendingUp aria-hidden="true" /></Metrica>
-		<Metrica etiqueta="Facturado en 30 días" valor={pesos(total30)} color="verde"><Banknote aria-hidden="true" /></Metrica>
-	</div>
+	{/* Primero lo pendiente: solo aparece lo que tiene algo para hacer. */}
+	{paraHacer.length > 0 ? (
+		<div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+			{paraHacer.map(([etiqueta, valor, href, Icono]) => <Metrica apilada alerta etiqueta={etiqueta} valor={valor} href={href}><Icono aria-hidden="true" /></Metrica>)}
+		</div>
+	) : (
+		<Tarjeta><Vacio texto="Nada pendiente por ahora"><CircleCheck aria-hidden="true" /></Vacio></Tarjeta>
+	)}
 
 	<div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
-		<Metrica apilada etiqueta="Transferencias por confirmar" valor={hoy.transferencias_por_confirmar} alerta={hoy.transferencias_por_confirmar > 0} href="/admin/pedidos?estado=pendiente_pago"><Banknote aria-hidden="true" /></Metrica>
-		<Metrica apilada etiqueta="Por despachar" valor={hoy.por_despachar} alerta={hoy.por_despachar > 0} href="/admin/pedidos?estado=pagado"><PackageOpen aria-hidden="true" /></Metrica>
-		<Metrica apilada etiqueta="Pagos a revisar" valor={hoy.a_revisar} alerta={hoy.a_revisar > 0} href="/admin/pedidos?estado=a_revisar"><CircleAlert aria-hidden="true" /></Metrica>
-		<Metrica apilada etiqueta="Post-venta abierta" valor={hoy.solicitudes_abiertas} alerta={hoy.solicitudes_abiertas > 0} href="/admin/solicitudes"><Undo2 aria-hidden="true" /></Metrica>
+		<Metrica apilada etiqueta="Ventas de hoy" valor={hoy.ventas}><ShoppingBag aria-hidden="true" /></Metrica>
+		<Metrica apilada etiqueta="Facturado hoy" valor={pesos(hoy.total_centavos)}><CircleDollarSign aria-hidden="true" /></Metrica>
+		<Metrica apilada etiqueta="Ventas en 30 días" valor={ventas30}><TrendingUp aria-hidden="true" /></Metrica>
+		<Metrica apilada etiqueta="Facturado en 30 días" valor={pesos(total30)}><Banknote aria-hidden="true" /></Metrica>
 	</div>
 
 	{hoy.emails_fallidos > 0 && (
@@ -58,43 +66,22 @@ const maximo = Math.max(1, ...dias.map((d) => d.total));
 		</div>
 	</Tarjeta>
 
-	<div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
-		<Tarjeta titulo="Stock bajo" alRas>
-			<TriangleAlert slot="icono" class="text-warning-500 size-5" aria-hidden="true" />
-			{r.stockBajo.length === 0 ? <Vacio texto="Todo con stock suficiente"><PackageOpen aria-hidden="true" /></Vacio> : (
-				<div class="overflow-x-auto">
-					<table class="min-w-full">
-						<tbody class="divide-y divide-gray-100">
-							{r.stockBajo.map((v: any) => (
-								<tr>
-									<td class="td"><span class="font-medium text-gray-800">{v.producto}</span><br /><span class="text-theme-xs text-gray-500">{[v.talle, v.color].filter(Boolean).join(' · ')}</span></td>
-									<td class="td num">{v.stock === 0 ? <Insignia color="rojo">Agotado</Insignia> : <Insignia color="ambar">Quedan {v.stock}</Insignia>}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
-		</Tarjeta>
+	<Tarjeta titulo="Stock bajo" alRas>
+		<TriangleAlert slot="icono" class="text-warning-500 size-5" aria-hidden="true" />
+		{r.stockBajo.length === 0 ? <Vacio texto="Todo con stock suficiente"><PackageOpen aria-hidden="true" /></Vacio> : (
+			<div class="overflow-x-auto">
+				<table class="min-w-full">
+					<tbody class="divide-y divide-gray-100">
+						{r.stockBajo.map((v: any) => (
+							<tr>
+								<td class="td"><span class="font-medium text-gray-800">{v.producto}</span><br /><span class="text-theme-xs text-gray-500">{[v.talle, v.color].filter(Boolean).join(' · ')}</span></td>
+								<td class="td num">{v.stock === 0 ? <Insignia color="rojo">Agotado</Insignia> : <Insignia color="ambar">Quedan {v.stock}</Insignia>}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)}
+	</Tarjeta>
 
-		<Tarjeta titulo="Más vendidos en 30 días" alRas>
-			<Flame slot="icono" class="size-5 text-orange-500" aria-hidden="true" />
-			{r.masVendidos.length === 0 ? <Vacio texto="Todavía no hay ventas"><ShoppingBag aria-hidden="true" /></Vacio> : (
-				<div class="overflow-x-auto">
-					<table class="min-w-full">
-						<tbody class="divide-y divide-gray-100">
-							{r.masVendidos.map((m: any, i: number) => (
-								<tr>
-									<td class="td w-8 text-gray-400 tabular-nums">{i + 1}</td>
-									<td class="td font-medium text-gray-800">{m.producto}</td>
-									<td class="td num"><Insignia color="azul">{m.unidades} u.</Insignia></td>
-									<td class="td num">{pesos(m.total_centavos)}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
-		</Tarjeta>
-	</div>
 </Panel>

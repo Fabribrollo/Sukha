@@ -1,0 +1,40 @@
+---
+// Banda de color con una fila de prendas de una categoría («Explorá · Chalecos»). Editable en /admin/portada.
+import { pesos, precioFinal, srcsetFoto, urlFoto, type Tienda, type TarjetaDeProducto } from '../../lib/formato';
+
+interface Props {
+  etiqueta?: string;
+  titulo?: string;
+  boton?: string;
+  href?: string | null;
+  productos: TarjetaDeProducto[];
+  tienda: Tienda;
+}
+const { etiqueta, titulo, boton, href, productos } = Astro.props;
+---
+
+<section class="bg-banda text-banda-texto mt-16 py-12 md:mt-[120px] md:py-20">
+	<div class="contenedor flex flex-col gap-5 md:gap-8">
+		<div class="flex items-end justify-between gap-4">
+			<div class="flex flex-col gap-2">
+				{etiqueta && <p data-campo="etiqueta" class="text-xs tracking-[0.2em] uppercase">{etiqueta}</p>}
+				{titulo && <h2 data-campo="titulo" class="text-[44px] leading-[0.95] md:text-[56px]">{titulo}</h2>}
+			</div>
+			{productos.length > 0 && <span class="text-sm opacity-80">{productos.length} {productos.length === 1 ? 'modelo' : 'modelos'}</span>}
+		</div>
+		{productos.length > 0 && <ul class="fila-deslizable md:grid md:grid-cols-4 md:gap-6 md:overflow-visible lg:grid-cols-6">
+			{productos.map((p) => (
+				<li class="w-[210px] shrink-0 snap-start md:w-auto">
+					<a href={`/producto/${p.slug}`} class="flex flex-col gap-2">
+						<span class="bg-arena/30 block aspect-[3/4] overflow-hidden">
+							{p.foto && <img src={urlFoto(p.foto, 'mediano')} srcset={srcsetFoto(p.foto)} sizes="(min-width: 1024px) 16vw, 210px" alt="" loading="lazy" class="size-full object-cover" />}
+						</span>
+						<span class="text-[15px]">{p.nombre}</span>
+						<span class="text-[15px] opacity-80">{pesos(precioFinal(p))}</span>
+					</a>
+				</li>
+			))}
+		</ul>}
+		{boton && href && <a href={href} class="boton bg-banda-texto text-texto w-full tracking-normal normal-case hover:opacity-90 md:w-auto md:self-start md:text-base">{boton}</a>}
+	</div>
+</section>

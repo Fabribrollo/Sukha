@@ -1,0 +1,65 @@
+---
+// Carga rápida: una tarjeta por producto con tres secciones (Datos, Fotos y Variantes). Todo se arma en el navegador y
+// se guarda solo como borrador (IndexedDB); recién al tocar «Publicar» se manda al servidor. La pantalla se maneja en
+// scripts/carga-rapida.ts: esta página solo trae las listas del panel y el marco.
+import { History, ListFilter, Plus, Rocket, Undo2 } from '@lucide/astro';
+import Panel from '../../../layouts/Panel.astro';
+import { leer } from '../../../lib/api';
+import { categoriasParaElegir } from '../../../lib/panel';
+
+export const prerender = false;
+
+const [categorias, colecciones, opciones] = await Promise.all([
+  leer<any[]>(Astro.request, '/api/admin/categorias'),
+  leer<any[]>(Astro.request, '/api/admin/colecciones'),
+  leer<{ talles: any[]; colores: any[]; marcas: any[]; materiales: any[] }>(Astro.request, '/api/admin/opciones'),
+]);
+const datos = {
+  categorias: categoriasParaElegir(categorias).map((c) => ({ id: c.id, nombre: c.etiqueta })),
+  marcas: opciones.marcas.map((m) => ({ id: m.id, nombre: m.nombre })),
+  talles: opciones.talles.map((t) => ({ id: t.id, nombre: t.nombre })),
+  colores: opciones.colores.map((c) => ({ id: c.id, nombre: c.nombre, hex: c.hex })),
+  materiales: opciones.materiales.map((m) => ({ id: m.id, nombre: m.nombre })),
+  colecciones: colecciones.map((c) => ({ id: c.id, nombre: c.nombre })),
+};
+const json = (x: unknown) => JSON.stringify(x).replace(/</g, '\\u003c');
+---
+
+<Panel titulo="Carga rápida" volver={{ href: '/admin/productos', texto: 'Productos' }}>
+	<div data-retomar hidden class="bg-warning-50 text-warning-700 border-warning-200 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm" role="status">
+		<p class="flex items-center gap-2 font-medium"><History class="size-5 shrink-0" aria-hidden="true" /><span data-retomar-texto></span></p>
+		<span class="flex gap-2">
+			<button type="button" data-continuar class="btn btn-primario">Continuar</button>
+			<button type="button" data-descartar class="btn btn-secundario">Descartar</button>
+		</span>
+	</div>
+
+	<!-- Barra fija: cuántos hay, el estado y la acción principal siempre a mano. -->
+	<div class="shadow-theme-sm sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+		<div class="mr-auto min-w-0" role="status">
+			<p data-resumen class="text-base font-semibold text-gray-800"></p>
+			<p data-guardado class="text-sm text-gray-500"></p>
+		</div>
+		<button type="button" data-solo-incompletos aria-pressed="false" class="btn-icono aria-pressed:bg-brand-50 aria-pressed:text-brand-600" title="Ver solo los que tienen datos faltantes" aria-label="Ver solo los que tienen datos faltantes"><ListFilter class="size-5" aria-hidden="true" /></button>
+		<button type="button" data-deshacer class="btn-icono disabled:opacity-40" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled><Undo2 class="size-5" aria-hidden="true" /></button>
+		<label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 select-none">
+			<input type="checkbox" data-publicar-ya class="peer sr-only" />
+			<span class="peer-checked:bg-brand-500 peer-focus-visible:ring-brand-500/30 after:shadow-theme-sm relative h-6 w-11 shrink-0 rounded-full bg-gray-200 transition peer-focus-visible:ring-3 after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" aria-hidden="true"></span>
+			Mostrar en la tienda
+		</label>
+		<button type="button" data-publicar class="btn btn-primario"><Rocket class="size-4" aria-hidden="true" /><span data-publicar-texto>Crear productos</span></button>
+	</div>
+
+	<p data-mensaje role="status" class="text-sm text-gray-600 empty:hidden"></p>
+	<ul data-problemas class="text-error-600 list-disc space-y-1 pl-5 text-sm" hidden></ul>
+
+	<div data-filas class="space-y-4"></div>
+
+	<button type="button" data-agregar class="enabled:hover:border-brand-300 enabled:hover:bg-brand-25 enabled:hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-300 bg-white px-4 py-5 text-sm font-medium text-gray-600 transition">
+		<Plus class="size-5" aria-hidden="true" />Agregar producto
+	</button>
+
+	<script type="application/json" id="datos-carga" set:html={json(datos)} />
+</Panel>
+
+<script src="../../../scripts/carga-rapida.ts"></script>

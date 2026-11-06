@@ -16,10 +16,11 @@
     "db:seed:staging": "wrangler d1 execute sukha-staging --env staging --remote --file seed.sql",
     "e2e": "node scripts/e2e.ts",
     "db:backup": "wrangler d1 export sukha --remote --output backups/sukha.sql",
-    "db:backup:staging": "wrangler d1 export sukha-staging --env staging --remote --output backups/sukha-staging.sql"
+    "db:backup:staging": "wrangler d1 export sukha-staging --env staging --remote --output backups/sukha-staging.sql",
+    "envios:tabla": "node scripts/generar-tabla-envios.mjs",
+    "micorreo:cliente": "node scripts/micorreo-cliente.ts"
   },
   "dependencies": {
-    "@sentry/cloudflare": "^11.7.0",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "resend": "^6.32.1",

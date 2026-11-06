@@ -7,9 +7,9 @@ export const prerender = false;
 
 const { tienda } = await datosDeLaTienda(Astro.request);
 // A la isla solo le pasamos lo que usa: no hace falta mandar al navegador los textos de la tienda.
-const { descuentoTransferenciaPorcentaje, cuotasSinInteres, retiro, reservaMercadoPagoMinutos, reservaTransferenciaHoras, maxUnidadesPorPedido } = tienda;
+const { descuentoTransferenciaPorcentaje, cuotasSinInteres, retiro, reservaMercadoPagoMinutos, reservaTransferenciaHoras, maxUnidadesPorPedido, whatsapp } = tienda;
 ---
 
 <CheckoutLayout titulo="Finalizar compra">
-	<Checkout client:only="preact" tienda={{ descuentoTransferenciaPorcentaje, cuotasSinInteres, retiro, reservaMercadoPagoMinutos, reservaTransferenciaHoras, maxUnidadesPorPedido }} />
+	<Checkout client:only="preact" tienda={{ descuentoTransferenciaPorcentaje, cuotasSinInteres, retiro, reservaMercadoPagoMinutos, reservaTransferenciaHoras, maxUnidadesPorPedido, whatsapp }} />
 </CheckoutLayout>

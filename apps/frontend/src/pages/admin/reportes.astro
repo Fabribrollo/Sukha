@@ -1,0 +1,176 @@
+---
+// Reportes de ventas: un período (atajos o fechas propias) y, para ese período, lo vendido sin envío, pedidos, ticket
+// promedio y unidades; el gráfico por día (o por mes si el período es largo) y los desgloses, cada uno exportable a CSV.
+// Una venta es un pedido pagado; los descuentos y el envío cobrado se muestran aparte.
+import { BadgePercent, Banknote, CalendarDays, CreditCard, Download, Flame, MapPin, Receipt, ShoppingBag, Tag, Truck } from '@lucide/astro';
+import Metrica from '../../components/panel/Metrica.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api } from '../../lib/api';
+import { errorDe, pesos } from '../../lib/panel';
+
+export const prerender = false;
+
+// Días de Argentina (UTC-3).
+const diaAr = (ms: number) => new Date(ms - 3 * 3_600_000).toISOString().slice(0, 10);
+const hoy = diaAr(Date.now());
+const primeroDelMes = `${hoy.slice(0, 8)}01`;
+const finMesPasado = diaAr(new Date(`${primeroDelMes}T12:00:00Z`).getTime() + 3 * 3_600_000 - 86_400_000);
+const ATAJOS = [
+  { texto: 'Hoy', desde: hoy, hasta: hoy },
+  { texto: '7 días', desde: diaAr(Date.now() - 6 * 86_400_000), hasta: hoy },
+  { texto: '30 días', desde: diaAr(Date.now() - 29 * 86_400_000), hasta: hoy },
+  { texto: 'Este mes', desde: primeroDelMes, hasta: hoy },
+  { texto: 'Mes pasado', desde: `${finMesPasado.slice(0, 8)}01`, hasta: finMesPasado },
+  { texto: 'Este año', desde: `${hoy.slice(0, 4)}-01-01`, hasta: hoy },
+];
+
+const desde = Astro.url.searchParams.get('desde') || primeroDelMes;
+const hasta = Astro.url.searchParams.get('hasta') || hoy;
+const consulta = new URLSearchParams({ desde, hasta });
+const respuesta = await api(Astro.request, `/api/admin/reportes?${consulta}`);
+const error = respuesta.ok ? '' : await errorDe(respuesta);
+const r = respuesta.ok ? ((await respuesta.json()) as any) : null;
+const t = r?.totales;
+
+// Gráfico: por día si el período es de hasta dos meses, si no por mes. Los días sin ventas también se dibujan.
+const dias = Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1;
+const porMes = dias > 62;
+const barras = !r
+  ? []
+  : porMes
+    ? r.porMes.map((m: any) => ({ clave: m.mes, etiqueta: `${m.mes.slice(5)}/${m.mes.slice(2, 4)}`, ventas: m.ventas_centavos, pedidos: m.pedidos }))
+    : Array.from({ length: dias }, (_, i) => {
+        const dia = new Date(new Date(`${desde}T12:00:00Z`).getTime() + i * 86_400_000).toISOString().slice(0, 10);
+        const d = r.porDia.find((x: any) => x.dia === dia);
+        return { clave: dia, etiqueta: `${dia.slice(8)}/${dia.slice(5, 7)}`, ventas: d?.ventas_centavos ?? 0, pedidos: d?.pedidos ?? 0 };
+      });
+const maximo = Math.max(1, ...barras.map((b: any) => b.ventas));
+const cadaCuanto = Math.ceil(barras.length / 12);
+
+const MEDIOS: Record<string, string> = { mercadopago: 'Mercado Pago', transferencia: 'Transferencia' };
+const exportar = (tabla: string) => `/api/admin/reportes/exportar?${new URLSearchParams({ tabla, desde, hasta })}`;
+const fecha = (d: string) => `${d.slice(8)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+const atajoActivo = ATAJOS.find((a) => a.desde === desde && a.hasta === hasta);
+const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
+const porcentaje = (parte: number, total: number) => (total ? Math.round((parte / total) * 100) : 0);
+---
+
+<Panel titulo="Reportes" error={error}>
+	<div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+		<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Período">
+			{ATAJOS.map((a) => (
+				<a href={`?${new URLSearchParams({ desde: a.desde, hasta: a.hasta })}`} aria-current={atajoActivo === a ? 'page' : undefined} class:list={pestana(atajoActivo === a)}>{a.texto}</a>
+			))}
+		</nav>
+		<form method="get" class="flex flex-wrap items-center gap-2">
+			<CalendarDays class="size-5 text-gray-400" aria-hidden="true" />
+			<div data-rango="fecha" class="flex items-center gap-2 [&_input.campo]:h-10 [&_input.campo]:w-56">
+				<input type="date" name="desde" value={desde} max={hoy} aria-label="Desde" class="campo h-10 w-auto" />
+				<input type="date" name="hasta" value={hasta} max={hoy} aria-label="Hasta" class="campo h-10 w-auto" />
+			</div>
+			<button class="btn btn-secundario h-10">Ver</button>
+		</form>
+	</div>
+
+	{t && (
+		<>
+			<p class="text-sm text-gray-500">Del {fecha(desde)} al {fecha(hasta)} · pedidos pagados, sin envío.</p>
+
+			<div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+				<Metrica apilada etiqueta="Vendido" valor={pesos(t.ventas_centavos)}><Banknote aria-hidden="true" /></Metrica>
+				<Metrica apilada etiqueta="Pedidos" valor={t.pedidos}><ShoppingBag aria-hidden="true" /></Metrica>
+				<Metrica apilada etiqueta="Ticket promedio" valor={pesos(t.ticket_promedio_centavos)}><Receipt aria-hidden="true" /></Metrica>
+				<Metrica apilada etiqueta="Prendas vendidas" valor={t.unidades}><Tag aria-hidden="true" /></Metrica>
+			</div>
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4">
+					<span class="flex items-center gap-3 text-sm text-gray-600"><BadgePercent class="text-warning-600 size-5" aria-hidden="true" />Descuentos otorgados</span>
+					<span class="text-base font-semibold text-gray-800 tabular-nums">{pesos(t.descuentos_centavos)} <span class="text-sm font-normal text-gray-500">de {pesos(t.prendas_centavos)} en prendas</span></span>
+				</div>
+				<div class="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4">
+					<span class="flex items-center gap-3 text-sm text-gray-600"><Truck class="size-5 text-gray-400" aria-hidden="true" />Envíos cobrados</span>
+					<span class="text-base font-semibold text-gray-800 tabular-nums">{pesos(t.envios_centavos)}</span>
+				</div>
+			</div>
+
+			<Tarjeta titulo={porMes ? 'Vendido por mes' : 'Vendido por día'}>
+				<a slot="acciones" href={exportar(porMes ? 'meses' : 'dias')} class="btn-icono" title="Descargar CSV" aria-label="Descargar CSV"><Download class="size-5" aria-hidden="true" /></a>
+				{t.pedidos === 0 ? <Vacio texto="No hubo ventas en este período"><ShoppingBag aria-hidden="true" /></Vacio> : (
+					<div class="flex h-52 items-end gap-1 sm:gap-2" role="img" aria-label={`Vendido ${porMes ? 'por mes' : 'por día'}. Total: ${pesos(t.ventas_centavos)}`}>
+						{barras.map((b: any, i: number) => (
+							<div class="group flex h-full min-w-0 flex-1 flex-col justify-end gap-1.5" title={`${b.etiqueta}: ${pesos(b.ventas)} en ${b.pedidos} ${b.pedidos === 1 ? 'pedido' : 'pedidos'}`}>
+								<div class:list={['w-full rounded-t-md transition group-hover:opacity-80', b.ventas ? 'bg-brand-500' : 'bg-gray-100']} style={`height:${Math.max(2, Math.round((b.ventas / maximo) * 100))}%`}></div>
+								<span class:list={['truncate text-center text-xs text-gray-400', i % cadaCuanto !== 0 && 'invisible']}>{porMes ? b.etiqueta : b.etiqueta.slice(0, 2)}</span>
+							</div>
+						))}
+					</div>
+				)}
+			</Tarjeta>
+
+			<div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
+				<Tarjeta titulo="Más vendidos" alRas>
+					<Flame slot="icono" class="size-5 text-orange-500" aria-hidden="true" />
+					<a slot="acciones" href={exportar('productos')} class="btn-icono" title="Descargar CSV" aria-label="Descargar CSV de más vendidos"><Download class="size-5" aria-hidden="true" /></a>
+					{r.productos.length === 0 ? <Vacio texto="Sin ventas en este período"><ShoppingBag aria-hidden="true" /></Vacio> : (
+						<div class="overflow-x-auto">
+							<table class="min-w-full">
+								<thead class="border-b border-gray-100"><tr><th class="th">Producto</th><th class="th num">Unidades</th><th class="th num">Monto</th></tr></thead>
+								<tbody class="divide-y divide-gray-100">
+									{r.productos.map((p: any, i: number) => (
+										<tr>
+											<td class="td"><span class="flex items-center gap-3"><span class="w-5 text-right text-gray-400 tabular-nums">{i + 1}</span><span class="font-medium text-gray-800">{p.producto}</span></span></td>
+											<td class="td num font-medium text-gray-800">{p.unidades}</td>
+											<td class="td num">{pesos(p.prendas_centavos)}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+				</Tarjeta>
+
+				<div class="space-y-5">
+					{[
+						{ titulo: 'Por medio de pago', tabla: 'pagos', filas: r.pagos, icono: CreditCard, nombre: (c: string) => MEDIOS[c] ?? c },
+						{ titulo: 'Por zona de envío', tabla: 'zonas', filas: r.zonas, icono: MapPin, nombre: (c: string) => c },
+					].map((d) => (
+						<Tarjeta titulo={d.titulo} alRas>
+							<d.icono slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+							<a slot="acciones" href={exportar(d.tabla)} class="btn-icono" title="Descargar CSV" aria-label={`Descargar CSV ${d.titulo.toLowerCase()}`}><Download class="size-5" aria-hidden="true" /></a>
+							{d.filas.length === 0 ? <Vacio texto="Sin ventas en este período"><ShoppingBag aria-hidden="true" /></Vacio> : (
+								<ul class="divide-y divide-gray-100">
+									{d.filas.map((f: any) => (
+										<li class="space-y-2 px-5 py-3 sm:px-6">
+											<p class="flex items-baseline justify-between gap-3 text-sm"><span class="font-medium text-gray-800">{d.nombre(f.clave)}</span><span class="text-gray-800 tabular-nums">{pesos(f.ventas_centavos)} <span class="text-gray-500">· {f.pedidos} {f.pedidos === 1 ? 'pedido' : 'pedidos'}</span></span></p>
+											<div class="h-2 rounded-full bg-gray-100"><div class="bg-brand-500 h-2 rounded-full" style={`width:${porcentaje(f.ventas_centavos, t.ventas_centavos)}%`}></div></div>
+										</li>
+									))}
+								</ul>
+							)}
+						</Tarjeta>
+					))}
+				</div>
+			</div>
+
+			<Tarjeta titulo="Por marca" alRas>
+				<Tag slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+				<a slot="acciones" href={exportar('marcas')} class="btn-icono" title="Descargar CSV" aria-label="Descargar CSV por marca"><Download class="size-5" aria-hidden="true" /></a>
+				{r.marcas.length === 0 ? <Vacio texto="Sin ventas en este período"><ShoppingBag aria-hidden="true" /></Vacio> : (
+					<div class="overflow-x-auto">
+						<table class="min-w-full">
+							<thead class="border-b border-gray-100"><tr><th class="th">Marca</th><th class="th num">Unidades</th><th class="th num">Monto en prendas</th></tr></thead>
+							<tbody class="divide-y divide-gray-100">
+								{r.marcas.map((m: any) => (
+									<tr><td class="td font-medium text-gray-800">{m.clave}</td><td class="td num">{m.unidades}</td><td class="td num">{pesos(m.prendas_centavos)}</td></tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
+			</Tarjeta>
+		</>
+	)}
+</Panel>
+<script src="../../scripts/rango-fechas.ts"></script>

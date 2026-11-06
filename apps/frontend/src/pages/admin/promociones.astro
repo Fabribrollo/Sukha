@@ -1,0 +1,152 @@
+---
+import { CalendarClock, Gift, Layers, Pause, Pencil, Percent, Plus, Save, Tag, X } from '@lucide/astro';
+import Campo from '../../components/panel/Campo.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Interruptor from '../../components/panel/Interruptor.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { deCampoFecha, dia, entero, errorDe, marcado, paraCampoFecha, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+let altaFallida = false;
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const id = f.get('id');
+  const tipo = String(f.get('tipo') ?? '');
+  const porcentaje = entero(f, 'porcentaje');
+  const comunes = { nombre: txt(f, 'nombre'), desde: deCampoFecha(txt(f, 'desde')), hasta: deCampoFecha(txt(f, 'hasta')) };
+  let r;
+  if (id) {
+    r = await api(Astro.request, `/api/admin/promociones/${id}`, { ...comunes, ...(tipo === 'liquidacion' && porcentaje !== null ? { porcentaje } : {}), activa: marcado(f, 'activa') }, 'PATCH');
+  } else {
+    // El alcance viaja como «c:ID» (categoría) o «k:ID» (colección).
+    const [clase, destino] = String(f.get('alcance') ?? '').split(':');
+    r = await api(Astro.request, '/api/admin/promociones', {
+      ...comunes,
+      tipo,
+      porcentaje: tipo === 'liquidacion' ? porcentaje : null,
+      categoriaId: clase === 'c' ? Number(destino) : null,
+      coleccionId: clase === 'k' ? Number(destino) : null,
+    });
+  }
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  altaFallida = !id;
+  error = await errorDe(r);
+}
+
+const [promociones, categorias, colecciones] = await Promise.all([
+  leer<any[]>(Astro.request, '/api/admin/promociones'),
+  leer<any[]>(Astro.request, '/api/admin/categorias'),
+  leer<any[]>(Astro.request, '/api/admin/colecciones'),
+]);
+const ahora = new Date().toISOString();
+const estado = (p: any) => (!p.activa ? 'pausada' : p.hasta && p.hasta <= ahora ? 'terminada' : p.desde && p.desde > ahora ? 'programada' : 'vigente');
+const titulo = (p: any) => (p.tipo === 'liquidacion' ? `${p.porcentaje}% de descuento` : p.tipo === '2x1' ? '2x1: llevando 2 pagás 1' : '3x2: llevando 3 pagás 2');
+---
+
+<Panel titulo="Promociones" error={error}>
+	<button slot="acciones" type="button" data-alta="alta-promocion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva</button>
+
+	{promociones.length === 0 && <Tarjeta alRas><Vacio texto="Todavía no hay promociones"><Tag aria-hidden="true" /></Vacio></Tarjeta>}
+
+	<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+		{promociones.map((p) => {
+			const e = estado(p);
+			const Icono = p.tipo === 'liquidacion' ? Percent : Gift;
+			return (
+				<article class:list={['rounded-2xl border border-gray-200 bg-white p-5', (e === 'pausada' || e === 'terminada') && 'opacity-70']}>
+					<div class="flex items-start justify-between gap-3">
+						<span class="bg-brand-50 text-brand-500 flex size-11 shrink-0 items-center justify-center rounded-xl"><Icono class="size-5" aria-hidden="true" /></span>
+						{e === 'vigente' ? <Insignia color="verde">Vigente</Insignia> : e === 'programada' ? <Insignia color="azul">Programada</Insignia> : e === 'terminada' ? <Insignia color="rojo">Terminada</Insignia> : <Insignia><Pause aria-hidden="true" />Pausada</Insignia>}
+					</div>
+					<p class="text-theme-xl mt-3 font-semibold text-gray-800">{p.nombre}</p>
+					<p class="text-theme-sm text-gray-500">{titulo(p)}</p>
+					<ul class="text-theme-xs mt-3 space-y-1 text-gray-500">
+						<li class="flex items-center gap-1.5"><Layers class="size-3.5" aria-hidden="true" />{p.categoria ? `Categoría ${p.categoria}` : `Colección ${p.coleccion}`}</li>
+						<li class="flex items-center gap-1.5"><CalendarClock class="size-3.5" aria-hidden="true" />{p.desde ? `Desde ${dia(p.desde)}` : 'Desde ya'}{p.hasta ? ` hasta ${dia(p.hasta)}` : ', sin fecha de fin'}</li>
+					</ul>
+					<button type="button" data-editar="editar-promocion" data-datos={JSON.stringify({ id: p.id, nombre: p.nombre, tipo: p.tipo, porcentaje: p.porcentaje, desde: paraCampoFecha(p.desde), hasta: paraCampoFecha(p.hasta), activa: p.activa === 1 })} class="hover:text-brand-500 text-theme-sm mt-4 inline-flex items-center gap-1.5 border-t border-gray-100 pt-3 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar</button>
+				</article>
+			);
+		})}
+	</div>
+
+	<dialog id="alta-promocion" data-abrir={altaFallida ? '' : undefined} class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="alta-promocion-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="alta-promocion-titulo" class="text-base font-medium text-gray-800">Nueva promoción</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" placeholder="Liquidación de verano" />
+			<div class="grid grid-cols-2 gap-4">
+				<Campo etiqueta="Tipo" nombre="tipo" tipo="select" data-tipo-promocion>
+					<option value="liquidacion">Liquidación (% de descuento)</option>
+					<option value="2x1">2x1</option>
+					<option value="3x2">3x2</option>
+				</Campo>
+				<Campo etiqueta="Descuento" nombre="porcentaje" prefijo="%" inputmode="numeric" placeholder="30" class="[&:has(input:disabled)]:invisible" />
+			</div>
+			<Campo etiqueta="Alcanza a" nombre="alcance" tipo="select" required ayuda="Todas las prendas de la categoría (y sus subcategorías) o de la colección.">
+				<optgroup label="Categorías">
+					{categorias.map((c) => <option value={`c:${c.id}`}>{c.nombre}</option>)}
+				</optgroup>
+				<optgroup label="Colecciones">
+					{colecciones.map((c) => <option value={`k:${c.id}`}>{c.nombre}</option>)}
+				</optgroup>
+			</Campo>
+			<div data-rango="fechahora" data-opcional data-etiqueta="Vigencia" class="grid grid-cols-2 gap-4">
+				<Campo etiqueta="Empieza" nombre="desde" tipo="datetime-local" ayuda="Vacío = empieza ya." />
+				<Campo etiqueta="Termina" nombre="hasta" tipo="datetime-local" ayuda="Vacío = sin fecha de fin." />
+			</div>
+			<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Crear promoción</button>
+		</form>
+	</dialog>
+
+	<dialog id="editar-promocion" class="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="editar-promocion-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="editar-promocion-titulo" class="text-base font-medium text-gray-800">Editar promoción</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<input type="hidden" name="id" />
+			<input type="hidden" name="tipo" />
+			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" />
+			<Campo etiqueta="Descuento" nombre="porcentaje" prefijo="%" inputmode="numeric" />
+			<div data-rango="fechahora" data-opcional data-etiqueta="Vigencia" class="grid grid-cols-2 gap-4">
+				<Campo etiqueta="Empieza" nombre="desde" tipo="datetime-local" />
+				<Campo etiqueta="Termina" nombre="hasta" tipo="datetime-local" />
+			</div>
+			<div class="flex items-center justify-between gap-3">
+				<Interruptor etiqueta="Activa" nombre="activa" />
+				<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+			</div>
+		</form>
+	</dialog>
+</Panel>
+
+<script src="../../scripts/alta.ts"></script>
+<script src="../../scripts/rango-fechas.ts"></script>
+<script>
+	// El porcentaje solo se pide en la liquidación.
+	const tipo = document.querySelector<HTMLSelectElement>('[data-tipo-promocion]')!;
+	const porcentaje = document.querySelector<HTMLInputElement>('#alta-promocion input[name=porcentaje]')!;
+	const cambiar = () => {
+		porcentaje.disabled = tipo.value !== 'liquidacion';
+		if (porcentaje.disabled) porcentaje.value = '';
+	};
+	tipo.addEventListener('change', cambiar);
+	cambiar();
+	// En la edición, igual: el campo se oculta salvo en la liquidación.
+	const edicion = document.querySelector<HTMLFormElement>('#editar-promocion form')!;
+	const tipoEdicion = edicion.querySelector<HTMLInputElement>('input[name=tipo]')!;
+	const campo = edicion.querySelector<HTMLInputElement>('input[name=porcentaje]')!;
+	const mostrar = () => {
+		campo.closest('div:not([class*=relative])')!.toggleAttribute('hidden', tipoEdicion.value !== 'liquidacion');
+		campo.disabled = tipoEdicion.value !== 'liquidacion';
+	};
+	tipoEdicion.addEventListener('change', mostrar);
+</script>

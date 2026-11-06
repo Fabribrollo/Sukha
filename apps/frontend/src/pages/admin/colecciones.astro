@@ -1,5 +1,5 @@
 ---
-import { Check, ChevronDown, ImageOff, PackagePlus, Plus, Save, Search, Sparkles, X } from '@lucide/astro';
+import { Check, ChevronDown, ImageOff, PackagePlus, Plus, Save, Search, Sparkles, Trash2, X } from '@lucide/astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
 import Interruptor from '../../components/panel/Interruptor.astro';
@@ -12,12 +12,16 @@ import { ESTADOS_PRODUCTO, entero, errorDe, foto, marcado, pesos, txt } from '..
 export const prerender = false;
 
 let error = '';
+let altaFallida = false;
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   const accion = f.get('accion');
   const id = f.get('id');
   let r: Response;
-  if (accion === 'coleccionProducto') {
+  if (accion === 'borrarColeccion') {
+    r = await api(Astro.request, `/api/admin/colecciones/${id}`, undefined, 'DELETE');
+    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  } else if (accion === 'coleccionProducto') {
     const coleccionId = f.get('coleccionId');
     const rutaColeccion = `/api/admin/colecciones/${coleccionId}/productos`;
     const elegidos = f.getAll('productoId').map(Number).filter((n) => Number.isInteger(n) && n > 0);
@@ -29,6 +33,7 @@ if (Astro.request.method === 'POST') {
   } else {
     const datos = { nombre: txt(f, 'nombre'), ...(id ? { activa: marcado(f, 'activa') } : {}) };
     r = id ? await api(Astro.request, `/api/admin/colecciones/${id}`, datos, 'PATCH') : await api(Astro.request, '/api/admin/colecciones', datos);
+    altaFallida = !id;
     if (r.ok) return Astro.redirect(id ? `${Astro.url.pathname}?ok&abierta=${id}#coleccion-${id}` : `${Astro.url.pathname}?ok`, 303);
   }
   error = await errorDe(r);
@@ -46,6 +51,7 @@ const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'v
 	<div class="max-w-4xl">
 		<Tarjeta titulo="Colecciones" alRas>
 			<Sparkles slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<button slot="acciones" type="button" data-alta="alta-coleccion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva</button>
 			{colecciones.length === 0 && <Vacio texto="Verano, ofertas, nueva temporada…"><Sparkles aria-hidden="true" /></Vacio>}
 			<ul class="divide-y divide-gray-100">
 				{colecciones.map((c) => {
@@ -67,6 +73,7 @@ const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'v
 										<input name="nombre" value={c.nombre} required maxlength="60" aria-label="Nombre de la colección" class="campo h-10 flex-1" />
 										<Interruptor etiqueta="Visible" nombre="activa" marcado={c.activa === 1} />
 										<button class="btn-icono" title="Guardar" aria-label="Guardar colección"><Save class="size-5" aria-hidden="true" /></button>
+										<a href={`/admin/buscadores/coleccion/${c.id}`} class="btn-icono" title="Buscadores y redes" aria-label={`Buscadores y redes de ${c.nombre}`}><Search class="size-5" aria-hidden="true" /></a>
 									</form>
 
 									<section aria-label={`Productos de ${c.nombre}`}>
@@ -92,19 +99,35 @@ const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'v
 										<p class="text-theme-sm text-gray-600">{disponibles.length === 0 ? 'Todos tus productos ya están en esta colección.' : `${disponibles.length} ${disponibles.length === 1 ? 'producto disponible' : 'productos disponibles'} para agregar.`}</p>
 										<button type="button" data-agregar={JSON.stringify({ id: c.id, nombre: c.nombre, dentro: c.productoIds })} disabled={disponibles.length === 0} class="btn btn-primario"><PackagePlus class="size-4" aria-hidden="true" />Agregar productos</button>
 									</div>
+									{/* Borrar pide un segundo toque. Las prendas no se borran: solo se deshace la colección. */}
+									<details class="group/borrar flex justify-end">
+										<summary class="btn btn-peligro-suave group-open/borrar:hidden" aria-label={`Borrar la colección ${c.nombre}`}><Trash2 class="size-4" aria-hidden="true" />Borrar colección</summary>
+										<form method="post" class="flex items-center gap-3">
+											<p class="text-theme-xs text-gray-500">Las prendas siguen en la tienda.</p>
+											<input type="hidden" name="accion" value="borrarColeccion" /><input type="hidden" name="id" value={c.id} />
+											<button class="btn btn-peligro"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+										</form>
+									</details>
 								</div>
 							</details>
 						</li>
 					);
 				})}
 			</ul>
-			<form method="post" class="flex items-end gap-3 border-t border-gray-100 p-5 sm:px-6">
-				<input type="hidden" name="accion" value="coleccion" />
-				<Campo etiqueta="Nueva colección" nombre="nombre" required maxlength="60" class="flex-1" />
-				<button class="btn btn-primario" title="Agregar colección" aria-label="Agregar colección"><Plus class="size-4" aria-hidden="true" /></button>
-			</form>
 		</Tarjeta>
 	</div>
+
+	<dialog id="alta-coleccion" data-abrir={altaFallida ? '' : undefined} class="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="alta-coleccion-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="alta-coleccion-titulo" class="text-base font-medium text-gray-800">Nueva colección</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<input type="hidden" name="accion" value="coleccion" />
+			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" placeholder="Verano, ofertas…" />
+			<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Crear colección</button>
+		</form>
+	</dialog>
 
 	<dialog id="agregar-productos" class="m-auto h-[90vh] w-[calc(100%-1.5rem)] max-w-5xl overflow-hidden rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="agregar-productos-titulo">
 		<form method="post" class="flex h-full min-h-0 flex-col">
@@ -178,3 +201,4 @@ const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'v
 	</dialog>
 </Panel>
 <script src="../../scripts/agregar-productos.ts"></script>
+<script src="../../scripts/alta.ts"></script>

@@ -1,8 +1,18 @@
 import type { Context } from 'hono';
 import { type AppEnv, conectar } from '../config';
 import * as catalogo from '../services/catalogo-admin.service';
+import * as cabecera from '../services/cabecera.service';
+import { Cabecera } from '../validations/cabecera.validation';
+import { aCsv, conteosProductos as conteos, stockParaExportar } from '../services/reportes.service';
 import { editarImagen, eliminarImagen, ordenarImagenes, subirImagen } from '../services/imagenes.service';
+import { quitarFavicon, quitarLogo, subirFavicon, subirLogo } from '../services/logo.service';
 import * as portada from '../services/portada.service';
+import { descartarBorrador, guardarBorrador, leerPortadas, publicarBorrador, subirImagenPortada } from '../services/portada-secciones.service';
+import { Portada } from '../validations/portada.validation';
+import { quitarImagenDeCategoria, subirImagenDeCategoria } from '../services/categoria-imagen.service';
+import * as tarifas from '../services/tarifas.service';
+import { crearRedireccion, eliminarRedireccion, listarRedirecciones } from '../services/redirecciones.service';
+import * as vt from '../validations/tienda.validation';
 import { ErrorApp } from '../utils/errores';
 import { cuerpo, idDe } from '../utils/http';
 import * as v from '../validations/catalogo.validation';
@@ -17,6 +27,19 @@ export const ordenarCategorias = async (c: C) =>
 export const editarCategoria = async (c: C) =>
   c.json(await catalogo.editarCategoria(conectar(c.env), idDe(c), await cuerpo(c, v.EdicionCategoria)));
 
+export async function eliminarCategoria(c: C) {
+  const db = conectar(c.env);
+  const id = idDe(c);
+  await catalogo.verificarBorrarCategoria(db, id);
+  await quitarImagenDeCategoria(c.env.IMAGENES, db, id).catch(() => {}); // sin foto no hay nada que quitar
+  return c.json(await catalogo.eliminarCategoria(db, id));
+}
+export const eliminarColeccion = async (c: C) => c.json(await catalogo.eliminarColeccion(conectar(c.env), idDe(c)));
+
+export const verCabecera = async (c: C) => c.json(await cabecera.verCabecera(conectar(c.env), c.env.DB));
+export const guardarCabecera = async (c: C) => c.json(await cabecera.guardarCabecera(c.env.DB, await cuerpo(c, Cabecera)));
+export const restaurarCabecera = async (c: C) => c.json(await cabecera.restaurarCabecera(c.env.DB));
+
 export const listarColecciones = async (c: C) => c.json(await catalogo.listarColecciones(conectar(c.env)));
 export const crearColeccion = async (c: C) =>
   c.json(await catalogo.crearColeccion(conectar(c.env), await cuerpo(c, v.NuevaColeccion)), 201);
@@ -24,10 +47,15 @@ export const editarColeccion = async (c: C) =>
   c.json(await catalogo.editarColeccion(conectar(c.env), idDe(c), await cuerpo(c, v.EdicionColeccion)));
 
 export const listarProductos = async (c: C) =>
-  c.json(await catalogo.listarProductos(conectar(c.env), { estado: c.req.query('estado'), q: c.req.query('q') }));
+  c.json(await catalogo.listarProductos(conectar(c.env), { estado: c.req.query('estado'), q: c.req.query('q'), marcaId: Number(c.req.query('marca')) || undefined }));
+export const conteosProductos = async (c: C) => c.json(await conteos(c.env.DB));
+export const exportarStock = async (c: C) =>
+  c.body(aCsv(await stockParaExportar(c.env.DB)), 200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="stock.csv"' });
 export const obtenerProducto = async (c: C) => c.json(await catalogo.obtenerProducto(conectar(c.env), idDe(c)));
 export const crearProducto = async (c: C) =>
   c.json(await catalogo.crearProducto(conectar(c.env), await cuerpo(c, v.NuevoProducto)), 201);
+export const crearProductosEnLote = async (c: C) =>
+  c.json(await catalogo.crearProductosEnLote(c.env.DB, c.get('adminId'), await cuerpo(c, v.NuevoLote)), 201);
 export const editarProducto = async (c: C) =>
   c.json(await catalogo.editarProducto(conectar(c.env), idDe(c), await cuerpo(c, v.EdicionProducto)));
 export const sugerencias = async (c: C) => c.json(await catalogo.sugerencias(c.env.DB));
@@ -53,6 +81,42 @@ export async function subirFoto(c: C) {
   const textoAlternativo = String(form.get('textoAlternativo') ?? '').trim().slice(0, 200) || null;
   return c.json(await subirImagen(c.env.IMAGENES, conectar(c.env), idDe(c), form, { colorId, textoAlternativo }), 201);
 }
+export async function subirLogoTienda(c: C) {
+  const form = await c.req.formData().catch(() => null);
+  if (!form) throw new ErrorApp(400, 'Se esperaba un formulario con el archivo del logo.');
+  return c.json(await subirLogo(c.env.IMAGENES, c.env.DB, form), 201);
+}
+export const quitarLogoTienda = async (c: C) => c.json(await quitarLogo(c.env.IMAGENES, c.env.DB));
+export async function subirFaviconTienda(c: C) {
+  const form = await c.req.formData().catch(() => null);
+  if (!form) throw new ErrorApp(400, 'Se esperaba un formulario con el archivo del favicon.');
+  return c.json(await subirFavicon(c.env.IMAGENES, c.env.DB, form), 201);
+}
+export const quitarFaviconTienda = async (c: C) => c.json(await quitarFavicon(c.env.IMAGENES, c.env.DB));
+export const vistaPreviaPrecios = async (c: C) => {
+  const conexion = conectar(c.env);
+  return c.json(await tarifas.vistaPrevia(c.env, conexion, await cuerpo(c, vt.ActualizarPrecios)));
+};
+export const aplicarPrecios = async (c: C) => c.json(await tarifas.aplicarPrecios(c.env, conectar(c.env), await cuerpo(c, vt.ActualizarPrecios)));
+export const verPortadas = async (c: C) => c.json(await leerPortadas(c.env.DB));
+export const guardarBorradorPortada = async (c: C) => (await guardarBorrador(c.env.DB, await cuerpo(c, Portada)), c.json({ ok: true }));
+export async function subirImagenDePortada(c: C) {
+  const form = await c.req.formData().catch(() => null);
+  if (!form) throw new ErrorApp(400, 'Se esperaba un formulario con la foto.');
+  return c.json(await subirImagenPortada(c.env.IMAGENES, form), 201);
+}
+export const descartarBorradorPortada = async (c: C) => (await descartarBorrador(c.env.DB), c.json({ ok: true }));
+export async function publicarPortada(c: C) {
+  const publicada = await publicarBorrador(c.env.DB);
+  if (!publicada) throw new ErrorApp(409, 'No hay borrador para publicar.');
+  return c.json({ ok: true });
+}
+export async function subirImagenCategoria(c: C) {
+  const form = await c.req.formData().catch(() => null);
+  if (!form) throw new ErrorApp(400, 'Se esperaba un formulario con la imagen.');
+  return c.json(await subirImagenDeCategoria(c.env.IMAGENES, conectar(c.env), idDe(c), form), 201);
+}
+export const quitarImagenCategoria = async (c: C) => c.json(await quitarImagenDeCategoria(c.env.IMAGENES, conectar(c.env), idDe(c)));
 export const ordenarFotos = async (c: C) =>
   c.json(await ordenarImagenes(conectar(c.env), idDe(c), (await cuerpo(c, v.OrdenImagenes)).ids));
 export const agregarAColeccion = async (c: C) =>
@@ -89,3 +153,7 @@ export async function eliminarBanner(c: C) {
   await portada.eliminarBanner(c.env.IMAGENES, conectar(c.env), idDe(c));
   return c.json({ ok: true });
 }
+
+export const verRedirecciones = async (c: C) => c.json(await listarRedirecciones(conectar(c.env)));
+export const agregarRedireccion = async (c: C) => c.json(await crearRedireccion(conectar(c.env), await cuerpo(c, v.NuevaRedireccion)), 201);
+export const quitarRedireccion = async (c: C) => c.json(await eliminarRedireccion(conectar(c.env), idDe(c)));

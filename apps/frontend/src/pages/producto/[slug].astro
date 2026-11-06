@@ -1,5 +1,4 @@
 ---
-import { ChevronDown } from '@lucide/astro';
 import FichaProducto from '../../components/tienda/FichaProducto.tsx';
 import Migas from '../../components/tienda/Migas.astro';
 import TarjetaProducto from '../../components/tienda/TarjetaProducto.astro';
@@ -9,16 +8,20 @@ import { canonica, datosDeLaTienda, jsonLd, parrafos, precioFinal, urlFoto, type
 
 export const prerender = false;
 
+// Los datos de la tienda se piden a la vez que el producto, no después.
+const datosTienda = datosDeLaTienda(Astro.request);
 const respuesta = await api(Astro.request, `/api/catalogo/productos/${encodeURIComponent(Astro.params.slug!)}`);
 if (respuesta.status === 404) return Astro.rewrite('/404');
+// Cualquier otro error (backend caído, límite…) termina en la página de error amable (pages/500.astro).
+if (!respuesta.ok) throw new Error(`${Astro.url.pathname}: ${respuesta.status}`);
 const p = (await respuesta.json()) as FichaDeProducto;
-const { tienda } = await datosDeLaTienda(Astro.request);
+const { tienda } = await datosTienda;
 
 const solicitada = Number(Astro.url.searchParams.get('variante'));
 const varianteInicial = p.variantes.some((v) => v.id === solicitada) ? solicitada : null;
 const url = canonica(Astro.url);
-const descripcion = (p.descripcion ?? '').replace(/\s+/g, ' ').trim().slice(0, 155) || `${p.nombre} en Sukhä. Envíos a todo el país.`;
-const primera = p.imagenes[0]?.clave;
+const descripcion = p.seoDescripcion || (p.descripcion ?? '').replace(/\s+/g, ' ').trim().slice(0, 155) || `${p.nombre} en Sukhä. Envíos a todo el país.`;
+const primera = p.seoImagen || p.imagenes[0]?.clave;
 const hayStock = p.variantes.some((v) => v.stock > 0);
 const origen = Astro.url.origin;
 const datosEstructurados = {
@@ -37,43 +40,27 @@ const datosEstructurados = {
   },
 };
 // A la isla solo le pasamos lo que usa: no hace falta mandar al navegador los textos de la tienda.
-const { descuentoTransferenciaPorcentaje, cuotasSinInteres, reservaMercadoPagoMinutos, reservaTransferenciaHoras, retiro, ultimasUnidadesUmbral, maxUnidadesPorPedido } = tienda;
-const datosParaLaFicha = { descuentoTransferenciaPorcentaje, cuotasSinInteres, reservaMercadoPagoMinutos, reservaTransferenciaHoras, retiro, ultimasUnidadesUmbral, maxUnidadesPorPedido };
+const { descuentoTransferenciaPorcentaje, cuotasSinInteres, reservaMercadoPagoMinutos, reservaTransferenciaHoras, retiro, ultimasUnidadesUmbral, maxUnidadesPorPedido, whatsapp } = tienda;
+const datosParaLaFicha = { descuentoTransferenciaPorcentaje, cuotasSinInteres, reservaMercadoPagoMinutos, reservaTransferenciaHoras, retiro, ultimasUnidadesUmbral, maxUnidadesPorPedido, whatsapp };
 const cambios = parrafos(tienda.contenido.contenido_politica_cambios);
 const secciones = [
-  { titulo: 'Descripción', abierta: true, parrafos: parrafos(p.descripcion) },
-  { titulo: 'Material y cuidados', abierta: false, parrafos: [p.material && `Material: ${p.material}`, p.cuidados && `Cuidados: ${p.cuidados}`].filter(Boolean) as string[] },
-  { titulo: 'Cambios y devoluciones', abierta: false, parrafos: cambios.slice(0, 2), enlace: cambios.length ? { href: '/cambios-y-devoluciones', texto: 'Ver la política completa' } : undefined },
+  { titulo: 'Cambios', abierta: false, parrafos: cambios.slice(0, 2), enlace: cambios.length ? { href: '/cambios-y-devoluciones', texto: 'Ver la política completa' } : undefined },
 ].filter((s) => s.parrafos.length > 0);
 ---
 
-<Tienda titulo={p.nombre} descripcion={descripcion} imagen={primera ? urlFoto(primera, 'grande') : undefined} canonica={url} tipo="product">
+<Tienda titulo={p.seoTitulo || p.nombre} descripcion={descripcion} imagen={primera ? urlFoto(primera, 'grande') : undefined} canonica={url} tipo="product">
 	<script type="application/ld+json" set:html={jsonLd(datosEstructurados)} slot="head" />
-	<div class="contenedor pt-5 pb-4">
-		<Migas items={[...(p.categoriaPadre ? [{ texto: p.categoriaPadre.nombre, href: `/categoria/${p.categoriaPadre.slug}` }] : []), { texto: p.categoria, href: `/categoria/${p.categoriaSlug}` }, { texto: p.nombre }]} />
-		<div class="mt-5">
-			<FichaProducto client:load producto={p} tienda={datosParaLaFicha} varianteInicial={varianteInicial} url={url} />
+	<div class="contenedor pt-0 pb-4 md:pt-6">
+		<div hidden><Migas items={[...(p.categoriaPadre ? [{ texto: p.categoriaPadre.nombre, href: `/categoria/${p.categoriaPadre.slug}` }] : []), { texto: p.categoria, href: `/categoria/${p.categoriaSlug}` }, { texto: p.nombre }]} /></div>
+		<div class="md:mt-5">
+			<FichaProducto client:load producto={p} tienda={datosParaLaFicha} varianteInicial={varianteInicial} url={url} secciones={secciones} />
 		</div>
 
-		{secciones.length > 0 && (
-			<div class="border-linea mt-12 max-w-3xl divide-y border-y">
-				{secciones.map((s) => (
-					<details open={s.abierta} class="group py-4">
-						<summary class="flex items-center justify-between gap-4 text-base font-semibold">{s.titulo}<ChevronDown class="size-5 transition group-open:rotate-180" aria-hidden="true" /></summary>
-						<div class="text-suave mt-3 space-y-3 text-sm leading-relaxed">
-							{s.parrafos.map((t) => <p>{t}</p>)}
-							{s.enlace && <a href={s.enlace.href} class="text-texto font-medium underline underline-offset-4">{s.enlace.texto}</a>}
-						</div>
-					</details>
-				))}
-			</div>
-		)}
-
 		{p.relacionados.length > 0 && (
-			<section class="mt-14" aria-labelledby="sec-relacionados">
-				<h2 id="sec-relacionados" class="mb-5 text-xl font-semibold md:text-2xl">También te puede gustar</h2>
-				<ul class="fila-deslizable">
-					{p.relacionados.map((r) => <li class="fila-deslizable-item"><TarjetaProducto producto={r} tienda={tienda} /></li>)}
+			<section class="mt-16 md:mt-24" aria-labelledby="sec-relacionados">
+				<h2 id="sec-relacionados" class="mb-6 text-3xl md:mb-8 md:text-[44px] md:leading-tight">Completá el look</h2>
+				<ul class="fila-deslizable md:grid md:grid-cols-4 md:gap-4 md:overflow-visible">
+					{p.relacionados.slice(0, 4).map((r) => <li class="w-[150px] shrink-0 snap-start md:w-auto"><TarjetaProducto producto={r} tienda={tienda} /></li>)}
 				</ul>
 			</section>
 		)}

@@ -27,6 +27,8 @@ export type Datos = {
   altura: string;
   pisoDepto: string;
   localidad: string;
+  // La localidad se eligió de la lista de sugerencias (o la lista no estaba disponible). Se guarda con los datos.
+  localidadValida: boolean;
   provincia: string;
   indicaciones: string;
   sucursal: string;
@@ -35,12 +37,14 @@ export type Datos = {
   condicionIva: string;
   metodoPago: 'mercadopago' | 'transferencia';
   cupon: string;
+  // Nota opcional para la tienda («es para regalo»).
+  nota: string;
   acepta: boolean;
 };
 
 export const datosVacios: Datos = {
   email: '', aceptaNovedades: false, codigoPostal: '', zonaEnvioId: null, retiro: false, nombre: '', telefono: '', dni: '', calle: '', altura: '', pisoDepto: '',
-  localidad: '', provincia: '', indicaciones: '', sucursal: '', facturaA: false, cuit: '', condicionIva: 'responsable_inscripto', metodoPago: 'mercadopago', cupon: '', acepta: false,
+  localidad: '', localidadValida: false, provincia: '', indicaciones: '', sucursal: '', facturaA: false, cuit: '', condicionIva: 'responsable_inscripto', metodoPago: 'mercadopago', cupon: '', nota: '', acepta: false,
 };
 
 // ───────────── Almacenamiento (se guarda mientras dura la pestaña, para no perder lo escrito si se recarga) ─────────────
@@ -113,7 +117,9 @@ export const cpValido = (t: string) => /^[A-Z]?\d{4}[A-Z]{0,3}$/i.test(t.trim())
 
 export function erroresContacto(d: Datos): Errores {
   const e: Errores = {};
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email.trim())) e.email = 'Escribí un email válido, por ejemplo nombre@correo.com.';
+  if (d.nombre.trim().length < 2) e.nombre = 'Escribí tu nombre y apellido.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email.trim())) e.email = 'Escribí un email válido';
+  if (!/^[0-9+() -]{6,25}$/.test(d.telefono.trim())) e.telefono = 'Escribí un teléfono válido';
   return e;
 }
 
@@ -121,13 +127,12 @@ export function erroresEntrega(d: Datos, modalidad: Modalidad | null): Errores {
   const e: Errores = {};
   if (!cpValido(d.codigoPostal)) e.codigoPostal = 'Escribí los 4 números de tu código postal.';
   else if (!modalidad) e.envio = 'Elegí cómo querés recibir tu compra.';
-  if (d.nombre.trim().length < 2) e.nombre = 'Escribí tu nombre y apellido.';
-  if (!/^[0-9+() -]{6,25}$/.test(d.telefono.trim())) e.telefono = 'Escribí un teléfono, solo con números.';
-  if (!/^\d{7,8}$/.test(soloDigitos(d.dni))) e.dni = 'El DNI tiene 7 u 8 números.';
+  if (!/^\d{7,8}$/.test(soloDigitos(d.dni))) e.dni = 'Escribí un DNI válido';
   if (modalidad === 'domicilio') {
     if (!d.calle.trim()) e.calle = 'Escribí la calle.';
     if (!d.altura.trim()) e.altura = 'Escribí la altura.';
     if (!d.localidad.trim()) e.localidad = 'Escribí la localidad.';
+    else if (!d.localidadValida) e.localidad = 'Elegí tu localidad de la lista';
   }
   if (modalidad === 'sucursal' && !d.sucursal.trim()) e.sucursal = 'Escribí el nombre o la dirección de la sucursal.';
   if (modalidad === 'domicilio' || modalidad === 'sucursal') {

@@ -44,7 +44,7 @@ export default function Buscador() {
 
   // En el celular, la capa abierta bloquea el scroll de la página de atrás.
   useEffect(() => {
-    document.body.classList.toggle('overflow-hidden', abierto && matchMedia('(max-width: 767px)').matches);
+    document.body.classList.toggle('overflow-hidden', abierto);
     return () => document.body.classList.remove('overflow-hidden');
   }, [abierto]);
 
@@ -73,12 +73,12 @@ export default function Buscador() {
 
   return (
     <div ref={caja} class="relative">
-      <button type="button" class="boton-icono md:hidden" onClick={abrir} title="Buscar" aria-label="Buscar">
+      <button type="button" class="boton-icono" onClick={abrir} title="Buscar" aria-label="Buscar">
         <Search class="size-5" aria-hidden="true" />
       </button>
 
-      <div class={abierto ? 'fixed inset-0 z-50 flex flex-col bg-white p-4 md:static md:block md:p-0' : 'hidden md:block'}>
-        <form action="/buscar" role="search" class="flex items-center gap-2">
+      <div class={abierto ? 'fixed inset-0 z-50 flex flex-col bg-fondo p-4 md:px-14 md:py-8' : 'hidden'}>
+        <form action="/buscar" role="search" class="mx-auto flex w-full max-w-2xl items-center gap-2">
           <div class="relative flex-1">
             <Search class="text-suave pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" aria-hidden="true" />
             <input
@@ -96,16 +96,16 @@ export default function Buscador() {
               aria-controls="sugerencias"
               aria-activedescendant={activo >= 0 ? `sug-${activo}` : undefined}
               autocomplete="off"
-              class="campo min-h-11 pl-10 md:w-72 lg:w-80"
+              class="campo min-h-11 pl-10"
             />
           </div>
-          <button type="button" class="boton-icono md:hidden" onClick={cerrar} title="Cerrar búsqueda" aria-label="Cerrar búsqueda">
+          <button type="button" class="boton-icono" onClick={cerrar} title="Cerrar búsqueda" aria-label="Cerrar búsqueda">
             <X class="size-5" aria-hidden="true" />
           </button>
         </form>
 
         {panelVisible && (
-          <div id="sugerencias" role="listbox" class="border-linea mt-2 flex-1 overflow-y-auto bg-white md:absolute md:top-full md:right-0 md:mt-1 md:w-96 md:flex-none md:rounded-tienda md:border md:shadow-lg">
+          <div id="sugerencias" role="listbox" class="border-linea mx-auto mt-2 w-full max-w-2xl flex-1 overflow-y-auto bg-fondo md:flex-none md:border">
             {resultados!.length === 0 ? (
               <p class="text-suave p-4 text-sm">No encontramos productos para «{buscado}».</p>
             ) : (

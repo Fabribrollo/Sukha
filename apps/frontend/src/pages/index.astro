@@ -1,38 +1,90 @@
 ---
+// Portada por secciones: el orden, qué se muestra y de dónde salen los productos se arma en /admin/portada.
+// Con ?vista-previa=1 y sesión de admin se ve el borrador (sin indexar), con un aviso arriba.
 import Beneficios from '../components/tienda/Beneficios.astro';
+import Campana from '../components/tienda/Campana.astro';
 import Carrusel from '../components/tienda/Carrusel.astro';
+import ColeccionDestacada from '../components/tienda/ColeccionDestacada.astro';
+import Columnas from '../components/tienda/Columnas.astro';
+import Banda from '../components/tienda/Banda.astro';
+import Hero from '../components/tienda/Hero.astro';
+import Local from '../components/tienda/Local.astro';
+import Newsletter from '../components/tienda/Newsletter.tsx';
+import SeccionCategorias from '../components/tienda/SeccionCategorias.astro';
 import SeccionProductos from '../components/tienda/SeccionProductos.astro';
 import Tienda from '../layouts/Tienda.astro';
 import { leer } from '../lib/api';
-import { datosDeLaTienda, type TarjetaDeProducto } from '../lib/tienda';
+import { datosDeLaTienda, portadaPublicada, type TarjetaDeProducto } from '../lib/tienda';
 
 export const prerender = false;
 
-const [{ tienda, filtros }, portada] = await Promise.all([
+const vistaPrevia = Astro.url.searchParams.has('vista-previa');
+// Dentro del editor del panel (iframe): cada sección lleva su marca para poder tocarla, y se carga el script del editor.
+const editor = vistaPrevia && Astro.url.searchParams.has('editor');
+const NOMBRES: Record<string, string> = { hero: 'Hero Moda real', banda: 'Banda de color', carrusel: 'Banners', campana: 'Campaña', coleccion: 'Colección destacada', columnas: 'Columnas', local: 'El local', categorias: 'Categorías', productos: 'Productos', beneficios: 'Beneficios', texto: 'Texto', newsletter: 'Newsletter', separador: 'Separador' };
+type Seccion = { id: string; tipo: string; dispositivo?: 'todos' | 'escritorio' | 'celular'; verTodos?: boolean; boton2?: string; enlace2?: string; lat?: number | null; lng?: number | null; zoom?: number; etiquetaMapa?: string; categoria?: string; titulo?: string; parrafo?: string; columnas?: 2 | 3 | 4 | 6; imagen?: string; etiqueta?: string; boton?: string; enlace?: string; tono?: 'oscuro' | 'claro'; conFoto?: boolean; producto?: string; looks?: { imagen: string; descripcion?: string; categoria?: string; enlace?: string }[]; banners?: any[]; items?: any[]; productos?: TarjetaDeProducto[]; href?: string | null };
+type Portada = { secciones: Seccion[]; borrador: boolean };
+const [{ tienda }, portada] = await Promise.all([
   datosDeLaTienda(Astro.request),
-  leer<{ banners: any[]; destacados: TarjetaDeProducto[]; nuevos: TarjetaDeProducto[]; ofertas: TarjetaDeProducto[] }>(Astro.request, '/api/portada'),
+  vistaPrevia ? leer<Portada>(Astro.request, '/api/portada?borrador=1') : portadaPublicada<Portada>(Astro.request),
 ]);
 ---
 
-<Tienda titulo="Sukhä">
-	{portada.banners.length > 0 && <Carrusel banners={portada.banners} />}
-
-	{filtros.categorias.length > 0 && (
-		<section class="contenedor mt-10 md:mt-14" aria-labelledby="sec-categorias">
-			<h2 id="sec-categorias" class="mb-5 text-xl font-semibold md:text-2xl">Categorías</h2>
-			<ul class="fila-deslizable md:grid md:grid-cols-4 md:overflow-visible">
-				{filtros.categorias.map((c) => (
-					<li class="w-[60%] shrink-0 snap-start sm:w-[36%] md:w-auto">
-						<a href={`/categoria/${c.slug}`} class="foto-vacia rounded-tienda hover:bg-linea flex aspect-[4/3] items-center justify-center p-4 text-center text-base font-semibold transition md:text-lg">{c.nombre}</a>
-					</li>
-				))}
-			</ul>
-		</section>
-	)}
-
-	<SeccionProductos titulo="Destacados" href="/productos?destacado=1" productos={portada.destacados} tienda={tienda} />
-	<SeccionProductos titulo="Nuevos ingresos" href="/productos" productos={portada.nuevos} tienda={tienda} />
-	<SeccionProductos titulo="Ofertas" href="/ofertas" productos={portada.ofertas} tienda={tienda} />
-
-	<Beneficios tienda={tienda} />
+<Tienda titulo="Sukhä" noindex={vistaPrevia} conNewsletter={portada.secciones.some((s) => s.tipo === 'newsletter')} superpuesta={portada.secciones[0]?.tipo === 'hero' && !(vistaPrevia && !editor)}>
+	{
+		vistaPrevia && !editor && (
+			<p class="bg-aviso-fondo text-aviso px-4 py-2 text-center text-sm font-medium" role="status">
+				Vista previa del borrador de la portada{portada.borrador ? '' : ' (no hay cambios sin publicar: es la portada actual)'}. Solo la ves vos.
+			</p>
+		)
+	}
+	{
+		portada.secciones.map((s) => {
+			const nodo = (() => {
+			switch (s.tipo) {
+				case 'carrusel':
+					return <Carrusel banners={s.banners!} />;
+				case 'hero':
+					return <Hero titulo={s.titulo} etiqueta={s.etiqueta} producto={s.producto} boton={s.boton} enlace={s.enlace} looks={s.looks!} />;
+				case 'banda':
+					return <Banda etiqueta={s.etiqueta} titulo={s.titulo} boton={s.boton} href={s.href} productos={s.productos!} tienda={tienda} />;
+				case 'categorias':
+					return <SeccionCategorias id={s.id} titulo={s.titulo ?? ''} columnas={s.columnas ?? 3} conFoto={s.conFoto ?? false} items={s.items!} verTodos={s.verTodos ?? false} />;
+				case 'productos':
+					return <SeccionProductos titulo={s.titulo ?? ''} href={s.href ?? ''} productos={s.productos!} tienda={tienda} />;
+				case 'campana':
+					return <Campana imagen={s.imagen ?? ''} etiqueta={s.etiqueta} titulo={s.titulo} boton={s.boton} enlace={s.enlace} tono={s.tono} />;
+				case 'coleccion':
+					return <ColeccionDestacada imagen={s.imagen ?? ''} etiqueta={s.etiqueta} titulo={s.titulo} parrafo={s.parrafo} boton={s.boton} enlace={s.enlace} />;
+				case 'columnas':
+					return <Columnas items={s.items!} />;
+				case 'local':
+					return <Local imagen={s.imagen ?? ''} etiqueta={s.etiqueta} titulo={s.titulo} parrafo={s.parrafo} boton={s.boton} enlace={s.enlace} boton2={s.boton2} enlace2={s.enlace2} lat={s.lat} lng={s.lng} zoom={s.zoom} etiquetaMapa={s.etiquetaMapa} />;
+				case 'beneficios':
+					return <Beneficios tienda={tienda} />;
+				case 'texto':
+					return (
+						<section class="contenedor mt-10 max-w-2xl text-center md:mt-14">
+							{s.titulo && <h2 data-campo="titulo" class="mb-3 text-xl md:text-2xl">{s.titulo}</h2>}
+							{s.parrafo && <p data-campo="parrafo" class="text-suave leading-relaxed whitespace-pre-line">{s.parrafo}</p>}
+						</section>
+					);
+				case 'newsletter':
+					return (
+						<section class="contenedor mt-10 max-w-xl text-center md:mt-14" aria-label="Novedades">
+							<h2 class="mb-3 text-xl md:text-2xl">{s.titulo || 'Suscribite y enterate de las novedades'}</h2>
+							<Newsletter client:visible />
+						</section>
+					);
+				case 'separador':
+					return <hr class="contenedor border-linea mt-10 md:mt-14" />;
+				default:
+					return null;
+			}
+			})();
+			const solo = s.dispositivo === 'escritorio' ? 'max-md:hidden' : s.dispositivo === 'celular' ? 'md:hidden' : undefined;
+			return nodo && (editor || solo) ? <div data-seccion={editor ? s.id : undefined} data-etiqueta={editor ? NOMBRES[s.tipo] : undefined} class={solo}>{nodo}</div> : nodo;
+		})
+	}
+	{editor && <script is:inline src="/editor-portada.js"></script>}
 </Tienda>

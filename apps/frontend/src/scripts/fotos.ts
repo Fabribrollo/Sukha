@@ -5,24 +5,12 @@
 //   data-subida   dirección de la API que recibe el formulario
 //   data-tamanos  JSON con los archivos a generar a partir del campo "foto": { "chico": 400, ... } (ancho máximo en px)
 // Los demás campos del formulario (color, texto alternativo, enlace...) se mandan tal cual.
+//   data-aspecto  proporción fija del recorte (ancho / alto); sin esto se elige al recortar
 //   data-auto    sube apenas se eligen (o se sueltan) las fotos, sin botón
 // Un segundo <input type="file" data-ancho="900"> se convierte por separado y va con su propio nombre.
 
-const CALIDAD = 0.82;
-
-async function aWebp(archivo: File, anchoMaximo: number): Promise<Blob> {
-  const imagen = await createImageBitmap(archivo);
-  const escala = Math.min(1, anchoMaximo / imagen.width);
-  const lienzo = document.createElement('canvas');
-  lienzo.width = Math.round(imagen.width * escala);
-  lienzo.height = Math.round(imagen.height * escala);
-  lienzo.getContext('2d')!.drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
-  imagen.close();
-  const blob = await new Promise<Blob | null>((listo) => lienzo.toBlob(listo, 'image/webp', CALIDAD));
-  // Safari viejo no sabe generar WebP y devuelve PNG: mejor avisar que subir algo que el servidor va a rechazar.
-  if (!blob || blob.type !== 'image/webp') throw new Error('Este navegador no puede convertir fotos a WebP. Probá con Chrome o Firefox.');
-  return blob;
-}
+import { recortar } from './recorte';
+import { aWebp } from './webp';
 
 for (const form of document.querySelectorAll<HTMLFormElement>('form[data-subida]')) {
   const estado = form.querySelector<HTMLElement>('[data-estado]');
@@ -44,7 +32,11 @@ for (const form of document.querySelectorAll<HTMLFormElement>('form[data-subida]
 
     try {
       // Cada foto elegida se sube por separado, con los mismos datos del formulario.
-      for (const [i, foto] of fotos.entries()) {
+      let subidas = 0;
+      for (const [i, original] of fotos.entries()) {
+        const foto = await recortar(original, { aspecto: form.dataset.aspecto ? Number(form.dataset.aspecto) : undefined, avance: fotos.length > 1 ? `Foto ${i + 1} de ${fotos.length}` : '' });
+        if (!foto) continue; // canceló el recorte de esta foto: no se sube
+        subidas++;
         decir(`Preparando y subiendo foto ${i + 1} de ${fotos.length}…`);
         const datos = new FormData();
         for (const campo of form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input:not([type=file]), select')) {
@@ -58,7 +50,23 @@ for (const form of document.querySelectorAll<HTMLFormElement>('form[data-subida]
         const r = await fetch(form.dataset.subida!, { method: 'POST', body: datos });
         if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'No se pudo subir la foto.');
       }
-      location.assign(`${location.pathname}?ok`);
+      if (!subidas) {
+        decir('');
+        principal.disabled = false;
+        principal.value = '';
+        if (boton) boton.disabled = false;
+        return;
+      }
+      // Con cambios sin guardar en la página (barra de guardado a la vista), recargar los borraría: la foto se ve al guardar.
+      if (document.querySelector('[data-barra-guardado]:not([hidden])')) {
+        decir(fotos.length > 1 ? 'Fotos subidas. Se ven al guardar los cambios.' : 'Foto subida. Se ve al guardar los cambios.');
+        principal.disabled = false;
+        principal.value = '';
+        return;
+      }
+      // Se vuelve a la misma pestaña (#imagen en Configuración); a la misma dirección con # el navegador no recargaría.
+      if (location.search === '?ok' && location.hash) location.reload();
+      else location.assign(`${location.pathname}?ok${location.hash}`);
     } catch (e) {
       decir(e instanceof Error ? e.message : 'No se pudo subir la foto.', true);
       if (boton) boton.disabled = false;

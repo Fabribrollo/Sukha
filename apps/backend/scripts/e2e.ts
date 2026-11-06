@@ -41,6 +41,7 @@ assert.equal((await api('GET', '/admin/productos')).status, 401);
 const login = await api('POST', '/admin/login', { email: process.env.E2E_EMAIL, contrasena: process.env.E2E_CLAVE });
 assert.equal(login.status, 200, login.texto);
 cookie = login.headers.get('set-cookie')!.split(';')[0];
+const cookieAdmin = cookie;
 paso('el panel exige sesión y el login funciona');
 
 // ───────────── Panel: catálogo ─────────────
@@ -52,7 +53,16 @@ const categoria = await ok('POST', '/admin/categorias', { nombre: `Remeras ${suf
 const coleccion = await ok('POST', '/admin/colecciones', { nombre: `Verano ${sufijo}` });
 assert.equal((await api('POST', '/admin/categorias', { nombre: `Remeras ${sufijo}` })).status, 409);
 
+// Marca (solo del panel) y materiales (lista que se arma sola).
+const marcaNombre = `Distribuidora Secreta ${sufijo}`;
+const marca = await ok('POST', '/admin/marcas', { nombre: marcaNombre });
+assert.equal((await api('POST', '/admin/marcas', { nombre: marcaNombre.toUpperCase() })).status, 409); // no distingue mayúsculas
+const algodon = await ok('POST', '/admin/materiales', { nombre: `Algodón ${sufijo}` });
+const lino = await ok('POST', '/admin/materiales', { nombre: `Lino ${sufijo}` });
+
 let producto = await ok('POST', '/admin/productos', {
+  marcaId: marca.id,
+  materialIds: [lino.id, algodon.id],
   categoriaId: categoria.id,
   nombre: `Remera Ñandú ${sufijo}`,
   precioCentavos: 2_000_000,
@@ -76,8 +86,7 @@ foto.set('colorId', String(negro));
 foto.set('textoAlternativo', 'Remera negra de frente');
 const subida = await api('POST', `/admin/productos/${producto.id}/imagenes`, foto);
 assert.equal(subida.status, 201, subida.texto);
-const servida = await fetch(`${BASE}/api/imagenes/${subida.json.clave}/mediano.webp`);
-assert.equal(await servida.text(), 'RIFFxxxxWEBP-mediano');
+// Las fotos las sirve el frontend (apps/frontend/src/pages/api/imagenes), no este backend.
 const fotoMala = new FormData();
 fotoMala.set('chico', new File(['x'], 'a.png', { type: 'image/png' }));
 assert.equal((await api('POST', `/admin/productos/${producto.id}/imagenes`, fotoMala)).status, 400);
@@ -85,14 +94,6 @@ assert.equal((await api('POST', `/admin/productos/${producto.id}/imagenes`, foto
 const disfrazada = new FormData();
 for (const t of ['chico', 'mediano', 'grande']) disfrazada.set(t, new File(['<script>alert(1)</script>'], `${t}.webp`, { type: 'image/webp' }));
 assert.equal((await api('POST', `/admin/productos/${producto.id}/imagenes`, disfrazada)).status, 400);
-// La foto se sirve con cabeceras seguras, también desde caché y aunque le agreguen parámetros.
-for (const sufijoUrl of ['', '', '?x=1']) {
-  const r = await fetch(`${BASE}/api/imagenes/${subida.json.clave}/chico.webp${sufijoUrl}`);
-  assert.equal(r.status, 200);
-  assert.equal(r.headers.get('content-type'), 'image/webp');
-  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
-  await r.arrayBuffer();
-}
 // Seguridad del panel: la cookie no la puede leer JavaScript, un cambio desde otro sitio se rechaza y nada se cachea.
 const cookieCompleta = login.headers.get('set-cookie')!;
 assert.match(cookieCompleta, /^__Host-sesion=[0-9a-f]{64}; /);
@@ -169,6 +170,40 @@ assert.deepEqual(arbol.hijas.map((h: any) => h.slug), [otraHija.slug, hija.slug]
 await ok('PATCH', `/admin/productos/${producto.id}`, { categoriaId: hija.id });
 assert.ok((await ok('GET', `/catalogo/productos?categoria=${categoria.slug}`)).productos.some((p: any) => p.slug === producto.slug));
 assert.equal((await ok('GET', `/catalogo/productos/${producto.slug}`)).categoriaPadre.slug, categoria.slug);
+// La tienda muestra los materiales como texto, ordenados y separados por coma.
+assert.equal((await ok('GET', `/catalogo/productos/${producto.slug}`)).material, `Algodón ${sufijo}, Lino ${sufijo}`);
+// La marca es solo del panel: no sale en ninguna respuesta pública.
+for (const ruta of [`/catalogo/productos/${producto.slug}`, `/catalogo/productos?categoria=${categoria.slug}`, '/catalogo/filtros', '/portada', '/tienda']) {
+  const r = await api('GET', ruta);
+  assert.equal(r.status, 200, ruta);
+  assert.ok(!r.texto.includes(marcaNombre) && !r.texto.includes('marcaId'), `${ruta} no debe mostrar la marca`);
+}
+assert.equal((await ok('GET', `/admin/productos?marca=${marca.id}`)).length, 2); // el producto y su copia (la copia conserva marca y materiales)
+assert.deepEqual([...duplicado.materialIds].sort(), [algodon.id, lino.id].sort());
+
+// Carga rápida: varios productos con variantes en un solo lote, como borrador y con su stock inicial en el libro.
+const nombreLote = `Camisa Lote ${sufijo}`;
+const lote = { productos: [
+  { nombre: nombreLote, categoriaId: categoria.id, marcaId: marca.id, materialIds: [lino.id], precioCentavos: 1_500_000, pesoGramos: 300, variantes: [{ talleId: talleM, colorId: negro, stock: 4 }, { talleId: talleM, colorId: null, stock: 0 }] },
+  { nombre: nombreLote, categoriaId: categoria.id, precioCentavos: 900_000, variantes: [{ stock: 2 }] },
+] };
+const repetida = { productos: [{ ...lote.productos[0], variantes: [{ talleId: talleM, stock: 1 }, { talleId: talleM, stock: 2 }] }] };
+assert.equal((await api('POST', '/admin/productos/lote', repetida)).status, 400, 'combinación repetida');
+assert.equal((await api('POST', '/admin/productos/lote', { productos: [{ ...lote.productos[0], categoriaId: 99999999 }] })).status >= 400, true, 'categoría inexistente');
+assert.equal((await ok('GET', `/admin/productos?q=${encodeURIComponent(nombreLote)}`)).length, 0, 'un lote con error no crea nada');
+const creados = await ok('POST', '/admin/productos/lote', lote);
+assert.equal(creados.productos.length, 2);
+assert.notEqual(creados.productos[0].slug, creados.productos[1].slug, 'mismo nombre, slugs distintos');
+const camisa = await ok('GET', `/admin/productos/${creados.productos[0].id}`);
+assert.equal(camisa.estado, 'borrador');
+assert.equal(camisa.marcaId, marca.id);
+assert.deepEqual(camisa.materialIds, [lino.id]);
+assert.equal(camisa.variantes.length, 2);
+assert.equal(camisa.variantes.reduce((n: number, v: any) => n + v.stock, 0), 4);
+const movs = await ok('GET', `/admin/variantes/${camisa.variantes.find((v: any) => v.stock === 4).id}/movimientos`);
+assert.equal(movs[0].cantidad, 4);
+assert.equal((await ok('GET', `/admin/productos/${creados.productos[1].id}`)).variantes[0].stock, 2);
+paso('carga rápida: lote de productos con variantes, todo o nada');
 await ok('PATCH', `/admin/categorias/${categoria.id}`, { activa: false });
 assert.ok(!(await ok('GET', '/catalogo/filtros')).categorias.some((c: any) => c.slug === categoria.slug), 'una principal oculta no se lista');
 assert.equal((await ok('GET', `/catalogo/productos?categoria=${hija.slug}`)).total, 0, 'sus hijas tampoco');
@@ -209,6 +244,11 @@ assert.ok(filtros.talles.some((t: any) => t.id === talleM));
 assert.ok(filtros.colores.some((c: any) => c.id === negro));
 assert.ok(filtros.talles.length < 13, 'los talles sin stock no deberían aparecer');
 assert.ok(filtros.precio.min > 0 && filtros.precio.max >= filtros.precio.min);
+// Con el alcance de una categoría, talles, colores y precio salen solo de sus productos.
+const deLaCategoria = await ok('GET', `/catalogo/filtros?categoria=${categoria.slug}`);
+assert.ok(deLaCategoria.talles.some((t: any) => t.id === talleM) && deLaCategoria.colores.some((c: any) => c.id === negro));
+const sinProductos = await ok('GET', '/catalogo/filtros?categoria=no-existe');
+assert.deepEqual([sinProductos.talles, sinProductos.colores, sinProductos.precio], [[], [], { min: 0, max: 0 }]);
 const mapa = await ok('GET', '/catalogo/sitemap');
 assert.ok(mapa.productos.some((p: any) => p.slug === producto.slug && p.actualizadoEn));
 assert.ok(!mapa.productos.some((p: any) => p.slug === duplicado.slug)); // los borradores no van
@@ -223,17 +263,37 @@ assert.equal(tiendaInfo.contenido.contenido_home.titulo, 'Hola');
 assert.equal(tiendaInfo.cuotasSinInteres, null); // desactivadas por defecto
 assert.equal(typeof tiendaInfo.reservaTransferenciaHoras, 'number');
 assert.equal(typeof tiendaInfo.reservaMercadoPagoMinutos, 'number');
+cookie = cookieAdmin; // estas llamadas son del panel
+// La base local puede traer una portada publicada de pruebas anteriores: se publica una conocida.
+await ok('PUT', '/admin/portada/borrador', { version: 1, secciones: [
+  { id: 'carrusel', tipo: 'carrusel' },
+  { id: 'nuevos', tipo: 'productos', titulo: 'Lo nuevo', fuente: { tipo: 'nuevos' }, cantidad: 6 },
+] });
+await ok('POST', '/admin/portada/publicar');
+cookie = '';
 const portada = await ok('GET', '/portada');
-assert.ok(portada.destacados.some((p: any) => p.slug === producto.slug));
-assert.ok(portada.nuevos.some((p: any) => p.slug === producto.slug));
-assert.ok(portada.ofertas.some((p: any) => p.slug === producto.slug));
-assert.ok(portada.banners.some((b: any) => b.clave === bannerCreado.json.clave && b.enlace === `/categoria/${categoria.slug}`));
-assert.ok(!portada.banners.some((b: any) => b.clave === bannerVencido.json.clave)); // fuera de fecha
-assert.equal(await (await fetch(`${BASE}/api/imagenes/${bannerCreado.json.clave}`)).text(), 'RIFFxxxxWEBP-banner');
+const de = (tipo: string, id: string) => portada.secciones.find((x: any) => x.tipo === tipo && x.id === id);
+assert.ok(de('productos', 'nuevos').productos.some((p: any) => p.slug === producto.slug));
+cookie = cookieAdmin;
+// Las otras fuentes se prueban con un borrador (solo se ve con sesión de admin y no toca lo publicado).
+await ok('PUT', '/admin/portada/borrador', { version: 1, secciones: [
+  { id: 'desta1234', tipo: 'productos', titulo: 'Destacados', fuente: { tipo: 'destacados' }, cantidad: 6 },
+  { id: 'ofert1234', tipo: 'productos', titulo: 'Ofertas.', fuente: { tipo: 'ofertas' }, cantidad: 6 },
+] });
+const previa = await ok('GET', '/portada?borrador=1');
+assert.equal(previa.borrador, true);
+assert.ok(previa.secciones.find((x: any) => x.id === 'desta1234').productos.some((p: any) => p.slug === producto.slug));
+assert.equal(previa.secciones.find((x: any) => x.id === 'ofert1234').titulo, 'Ofertas'); // sin punto final
+assert.ok(!(await ok('GET', '/portada')).secciones.some((x: any) => x.id === 'desta1234'), 'lo publicado no cambia');
+await ok('DELETE', '/admin/portada/borrador');
+cookie = '';
+const banners = de('carrusel', 'carrusel').banners;
+assert.ok(banners.some((b: any) => b.clave === bannerCreado.json.clave && b.enlace === `/categoria/${categoria.slug}`));
+assert.ok(!banners.some((b: any) => b.clave === bannerVencido.json.clave)); // fuera de fecha
 assert.equal((await ok('GET', `/catalogo/productos?destacado=1&categoria=${categoria.slug}`)).total, 1);
 
-const opciones = await ok('POST', '/envios/cotizar', { codigoPostal: `X${cp}ABC` });
-assert.equal(opciones[0].zonaEnvioId, zona.id);
+const { opciones } = await ok('POST', '/envios/cotizar', { codigoPostal: `X${cp}ABC` });
+assert.ok(opciones.some((o: any) => o.zonaEnvioId === zona.id), "la zona de la corrida cotiza el envío");
 
 const items = [{ varianteId: variante.id, cantidad: 2 }];
 const carrito = await ok('POST', '/carrito/validar', { items, cupon: codigo, zonaEnvioId: zona.id, codigoPostal: String(cp), metodoPago: 'transferencia' });
@@ -268,6 +328,7 @@ const creado = await api('POST', '/pedidos', pedido);
 assert.equal(creado.status, 201, creado.texto);
 assert.match(creado.json.numero, /^SUK-\d{4,}$/);
 assert.equal(creado.json.pedido.totalCentavos, 3_716_000);
+assert.ok(!creado.texto.includes(marcaNombre), 'el pedido no debe mostrar la marca');
 assert.equal(creado.json.pedido.transferencia.alias, 'sukha.prueba');
 const token = creado.json.token;
 

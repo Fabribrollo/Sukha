@@ -1,0 +1,79 @@
+---
+// Los campos de un producto, en tres partes que siguen el orden en que se piensa un producto: lo básico (nombre y
+// descripción), el precio y envío, y cómo se organiza (categoría, colecciones, marca, materiales). Los usan la ficha de edición,
+// que reparte cada parte en su tarjeta, y el modal de alta, que las muestra juntas (sin "parte"). El <form> y el botón los pone quien lo usa.
+import { Star } from '@lucide/astro';
+import Ayuda from './Ayuda.astro';
+import Campo from './Campo.astro';
+import { categoriasParaElegir, enCampo } from '../../lib/panel';
+
+interface Props {
+  p?: any;
+  categorias: any[];
+  colecciones: any[];
+  opciones: { marcas: any[]; materiales: any[] };
+  cuidados: string[];
+  parte?: 'basico' | 'precio' | 'organizacion';
+}
+const { p, categorias, colecciones, opciones, cuidados, parte } = Astro.props;
+// Opciones de cuidados: lo ya usado en otros productos, más el valor actual de este.
+const conActual = (lista: string[], actual: string | null | undefined) => (actual && !lista.includes(actual) ? [actual, ...lista] : lista);
+const ver = (esta: string) => !parte || parte === esta;
+---
+
+{ver('basico') && (
+	<div class="space-y-4">
+		<Campo etiqueta="Nombre" nombre="nombre" valor={p?.nombre} required maxlength="120" />
+		<Campo etiqueta="Descripción" nombre="descripcion" tipo="area" valor={p?.descripcion} maxlength="5000" rows="6" />
+	</div>
+)}
+{ver('precio') && (
+	<div class:list={['grid grid-cols-1 gap-4 sm:grid-cols-3', !parte && 'mt-4']}>
+		<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" valor={enCampo(p?.precioCentavos)} required />
+		<Campo etiqueta="Precio de oferta" nombre="oferta" prefijo="$" inputmode="decimal" valor={enCampo(p?.precioOfertaCentavos)} ayuda="Si lo completás, se cobra este y el precio normal se muestra tachado. Vacío = sin oferta." />
+		<Campo etiqueta="Peso (g)" nombre="pesoGramos" inputmode="numeric" valor={p?.pesoGramos} ayuda="Para calcular el envío." />
+	</div>
+)}
+{ver('organizacion') && (
+	<div class:list={['space-y-4', !parte && 'mt-4']}>
+		<Campo etiqueta="Categoría" nombre="categoriaId" tipo="select" data-combo data-crear="/api/admin/categorias">
+			{categoriasParaElegir(categorias).map((c) => <option value={c.id} selected={c.id === p?.categoriaId}>{c.etiqueta}</option>)}
+		</Campo>
+		<fieldset class="space-y-2">
+			<legend class="etiqueta">Colecciones y portada</legend>
+			<label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 select-none">
+				<input type="checkbox" name="destacado" checked={p?.destacado === 1} class="peer sr-only" />
+				<Star class="peer-checked:fill-warning-500 peer-checked:text-warning-500 peer-focus-visible:ring-brand-500/30 size-6 rounded text-gray-300 peer-focus-visible:ring-3" aria-hidden="true" />
+				Destacado en la portada
+			</label>
+			<div class="max-h-56 space-y-2 overflow-y-auto">
+			{colecciones.map((c) => (
+				<label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 select-none">
+					<input type="checkbox" name="coleccion" value={c.id} checked={(p?.coleccionIds ?? []).includes(c.id)} class="text-brand-500 focus:ring-brand-500/30 size-4 rounded border-gray-300" />
+					{c.nombre}
+				</label>
+			))}
+			</div>
+		</fieldset>
+		<Campo etiqueta="Marca o distribuidor" nombre="marcaId" tipo="select" data-combo data-crear="/api/admin/marcas" ayuda="Solo lo ves vos: no se muestra en la tienda.">
+			<option value="">Sin especificar</option>
+			{opciones.marcas.map((m) => <option value={m.id} selected={m.id === p?.marcaId}>{m.nombre}</option>)}
+		</Campo>
+		<Campo etiqueta="Cuidados" nombre="cuidados" tipo="select" data-combo data-libre>
+			<option value="">Sin especificar</option>
+			{conActual(cuidados, p?.cuidados).map((c) => <option value={c} selected={c === p?.cuidados}>{c}</option>)}
+		</Campo>
+		<fieldset data-materiales class="space-y-2">
+			<legend class="etiqueta">Materiales <Ayuda>Buscá o escribí uno nuevo. Podés elegir varios; en la tienda se muestran separados por coma.</Ayuda></legend>
+			<div data-elegidos class="flex flex-wrap gap-2">
+				{(p?.materialIds ?? []).map((mid: number) => opciones.materiales.find((m) => m.id === mid)).filter(Boolean).map((m) => (
+					<span data-chip={m.id} class="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-300 bg-gray-50 pr-1 pl-3 text-sm text-gray-700">{m.nombre}<input type="hidden" name="material" value={m.id} /><button type="button" data-quitar-chip class="btn-icono size-7" title="Quitar" aria-label={`Quitar ${m.nombre}`}>×</button></span>
+				))}
+			</div>
+			<select aria-label="Agregar material" data-crear="/api/admin/materiales" class="campo">
+				<option value="" disabled selected></option>
+				{opciones.materiales.map((m) => <option value={m.id}>{m.nombre}</option>)}
+			</select>
+		</fieldset>
+	</div>
+)}

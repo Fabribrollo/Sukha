@@ -18,7 +18,7 @@ export default function BuscarPedido({ modo }: { modo: 'buscar' | 'arrepentimien
   const [motivo, setMotivo] = useState('');
   const [estado, setEstado] = useState<'libre' | 'enviando' | 'listo'>('libre');
   const [error, setError] = useState('');
-  const [codigo, setCodigo] = useState<{ id: number; numero: string } | null>(null);
+  const [codigo, setCodigo] = useState<{ id: number; numero: string; codigo: string | null } | null>(null);
   const [recientes, setRecientes] = useState<Reciente[]>([]);
 
   useEffect(() => {
@@ -52,9 +52,9 @@ export default function BuscarPedido({ modo }: { modo: 'buscar' | 'arrepentimien
       <div class="border-linea rounded-tienda space-y-3 border p-6 text-center" role="status">
         <CircleCheck class="text-exito mx-auto size-10" aria-hidden="true" />
         <p class="text-lg font-semibold">Recibimos tu arrepentimiento</p>
-        <p class="text-suave text-sm">Pedido {codigo.numero}. Guardá este código de confirmación:</p>
-        <p class="text-2xl font-semibold tracking-wide">N.º {codigo.id}</p>
-        <p class="text-suave text-sm">Te vamos a escribir por email para coordinar la devolución.</p>
+        <p class="text-suave text-sm">Pedido {codigo.numero}. Guardá este código de tu solicitud:</p>
+        <p class="text-2xl font-semibold tracking-wide">{codigo.codigo ?? `N.º ${codigo.id}`}</p>
+        <p class="text-suave text-sm">Te lo mandamos también por email, con los pasos para devolvernos la prenda.</p>
       </div>
     );
   }
@@ -63,7 +63,7 @@ export default function BuscarPedido({ modo }: { modo: 'buscar' | 'arrepentimien
     <div class="space-y-8">
       {modo === 'buscar' && recientes.length > 0 && (
         <section aria-labelledby="recientes">
-          <h2 id="recientes" class="mb-3 text-base font-semibold">
+          <h2 id="recientes" class="mb-3 text-base">
             Tus pedidos recientes en este dispositivo
           </h2>
           <ul class="divide-linea border-linea rounded-tienda divide-y border">

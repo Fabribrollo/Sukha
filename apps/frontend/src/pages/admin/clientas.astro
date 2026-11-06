@@ -19,9 +19,9 @@ const compradoras = clientas.filter((c) => c.pedidos > 0).length;
 	<a slot="acciones" class="btn btn-secundario" href="/api/admin/clientas/exportar"><Download class="size-4" aria-hidden="true" />Exportar</a>
 
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-		<Metrica etiqueta="Clientas" valor={clientas.length} color="azul"><Users aria-hidden="true" /></Metrica>
-		<Metrica etiqueta="Compraron" valor={compradoras} color="verde"><ShoppingBag aria-hidden="true" /></Metrica>
-		<Metrica etiqueta="Reciben novedades" valor={suscriptas} color="violeta"><BellRing aria-hidden="true" /></Metrica>
+		<Metrica etiqueta="Clientas" valor={clientas.length}><Users aria-hidden="true" /></Metrica>
+		<Metrica etiqueta="Compraron" valor={compradoras}><ShoppingBag aria-hidden="true" /></Metrica>
+		<Metrica etiqueta="Reciben novedades" valor={suscriptas}><BellRing aria-hidden="true" /></Metrica>
 	</div>
 
 	<Tarjeta alRas>

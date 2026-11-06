@@ -1,23 +1,31 @@
 ---
 import { ChevronDown } from '@lucide/astro';
+import TextoConFormato from '../components/tienda/TextoConFormato.astro';
 import Tienda from '../layouts/Tienda.astro';
-import { datosDeLaTienda, jsonLd, parrafos } from '../lib/tienda';
+import { bloquesDe, textoDe } from '../lib/textos';
+import { datosDeLaTienda, jsonLd } from '../lib/tienda';
 
 export const prerender = false;
 
 const { tienda } = await datosDeLaTienda(Astro.request);
-const lista = tienda.contenido.contenido_preguntas_frecuentes;
-const preguntas: { pregunta: string; respuesta: string }[] = Array.isArray(lista) ? lista.filter((q) => q?.pregunta && q?.respuesta) : [];
+// Lo cargado en el panel o, si no hay nada, las preguntas originales (lib/textos.ts).
+const preguntas = textoDe('contenido_preguntas_frecuentes', tienda.contenido);
+// Para Google, la respuesta va en texto plano, con los datos de Configuración ya puestos.
+const textoPlano = (respuesta: string) =>
+	bloquesDe(respuesta, tienda)
+		.flatMap((b) => (b.tipo === 'titulo' ? [b.partes] : b.tipo === 'lista' ? b.items : b.lineas))
+		.map((partes) => partes.map((p) => p.texto).join(''))
+		.join(' ');
 const datosEstructurados = {
 	'@context': 'https://schema.org',
 	'@type': 'FAQPage',
-	mainEntity: preguntas.map((q) => ({ '@type': 'Question', name: q.pregunta, acceptedAnswer: { '@type': 'Answer', text: q.respuesta } })),
+	mainEntity: preguntas.map((q) => ({ '@type': 'Question', name: q.pregunta, acceptedAnswer: { '@type': 'Answer', text: textoPlano(q.respuesta) } })),
 };
 ---
 
 <Tienda titulo="Preguntas frecuentes" descripcion="Envíos, pagos, talles y cambios: respondemos lo que más nos preguntan.">
 	<div class="contenedor max-w-2xl py-8 md:py-12">
-		<h1 class="mb-6 text-2xl font-semibold md:text-3xl">Preguntas frecuentes</h1>
+		<h1 class="mb-6 text-2xl md:text-3xl">Preguntas frecuentes</h1>
 		{
 			preguntas.length ? (
 				<div class="divide-linea border-linea divide-y border-y">
@@ -27,7 +35,7 @@ const datosEstructurados = {
 								{q.pregunta}
 								<ChevronDown class="size-5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
 							</summary>
-							<div class="text-suave space-y-3 pb-4 text-sm leading-relaxed">{parrafos(q.respuesta).map((p) => <p>{p}</p>)}</div>
+							<TextoConFormato class="text-suave pb-4 text-sm" texto={q.respuesta} tienda={tienda} />
 						</details>
 					))}
 				</div>

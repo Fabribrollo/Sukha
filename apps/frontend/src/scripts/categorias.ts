@@ -1,7 +1,7 @@
-// Panel de categorías: ordenar arrastrando, ocultar/mostrar con el interruptor y editar en una ventana.
-// Sin JavaScript la página sigue funcionando: el orden no se puede cambiar, pero se ve y se edita todo con los formularios.
+// Panel de categorías: ocultar/mostrar con el interruptor y editar en una ventana. El orden del menú se define en Tienda → Cabecera.
 
-import { ordenable } from './ordenable';
+import { recortar } from './recorte';
+import { aWebp } from './webp';
 
 const estado = document.querySelector<HTMLElement>('[data-estado-categorias]');
 const avisar = (texto: string, error = false) => {
@@ -14,23 +14,6 @@ const avisar = (texto: string, error = false) => {
 async function pedir(ruta: string, metodo: 'PUT' | 'PATCH', cuerpo: unknown) {
   const r = await fetch(ruta, { method: metodo, headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo) });
   if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'No se pudo guardar.');
-}
-
-// ───────────── Orden ─────────────
-// La lista de principales y la de subcategorías de cada una se ordenan por separado.
-for (const lista of document.querySelectorAll<HTMLElement>('[data-lista]')) {
-  ordenable(lista, {
-    asa: '[data-asa]',
-    guardar: async (ids) => {
-      try {
-        avisar('Guardando…');
-        await pedir('/api/admin/categorias/orden', 'PUT', { ids });
-        avisar('Orden guardado.');
-      } catch (e) {
-        avisar((e instanceof Error ? e.message : 'No se pudo guardar') + ' Recargá la página.', true);
-      }
-    },
-  });
 }
 
 // ───────────── Visibilidad ─────────────
@@ -55,9 +38,24 @@ const ventana = document.querySelector<HTMLDialogElement>('#editar-categoria');
 if (ventana) {
   const form = ventana.querySelector('form')!;
   const campo = (nombre: string) => form.elements.namedItem(nombre) as HTMLInputElement;
+  // Borrar: dos toques; si tiene productos o subcategorías, el servidor lo explica y no se borra.
+  const borrar = ventana.querySelector<HTMLButtonElement>('[data-borrar]')!;
+  const confirmar = ventana.querySelector<HTMLButtonElement>('[data-borrar-confirmar]')!;
+  const errorBorrar = ventana.querySelector<HTMLElement>('[data-borrar-error]')!;
+  borrar.addEventListener('click', () => ((borrar.hidden = true), (confirmar.hidden = false), (errorBorrar.hidden = true)));
+  confirmar.addEventListener('click', async () => {
+    confirmar.disabled = true;
+    const r = await fetch(`/api/admin/categorias/${campo('id').value}`, { method: 'DELETE' });
+    if (r.ok) return location.assign(`${location.pathname}?ok`);
+    errorBorrar.textContent = ((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'No se pudo borrar.';
+    errorBorrar.hidden = false;
+    confirmar.disabled = false;
+    confirmar.hidden = true;
+    borrar.hidden = false;
+  });
   for (const boton of document.querySelectorAll<HTMLButtonElement>('[data-editar]')) {
     boton.addEventListener('click', () => {
-      const c = JSON.parse(boton.dataset.editar!) as { id: number; nombre: string; padreId: number | null; guia: string; activa: boolean; tieneHijas: boolean };
+      const c = JSON.parse(boton.dataset.editar!) as { id: number; nombre: string; padreId: number | null; guia: string; activa: boolean; tieneHijas: boolean; imagen: string | null };
       campo('id').value = String(c.id);
       campo('nombre').value = c.nombre;
       campo('guiaTalles').value = c.guia;
@@ -68,9 +66,51 @@ if (ventana) {
       for (const o of padre.options) o.hidden = o.value === String(c.id);
       padre.disabled = c.tieneHijas;
       ventana.querySelector('[data-aviso-hijas]')?.classList.toggle('hidden', !c.tieneHijas);
+      mostrarFoto(c.id, c.imagen);
+      borrar.hidden = false;
+      confirmar.hidden = true;
+      errorBorrar.hidden = true;
       ventana.showModal();
     });
   }
+  // Foto opcional de la categoría: se sube apenas se elige y se recarga para ver el resultado.
+  const previa = ventana.querySelector<HTMLImageElement>('[data-foto-previa]')!;
+  const vacia = ventana.querySelector<HTMLElement>('[data-foto-vacia]')!;
+  const quitar = ventana.querySelector<HTMLButtonElement>('[data-foto-quitar]')!;
+  const archivo = ventana.querySelector<HTMLInputElement>('[data-foto-archivo]')!;
+  const textoFoto = ventana.querySelector<HTMLElement>('[data-foto-texto]')!;
+  const estadoFoto = ventana.querySelector<HTMLElement>('[data-foto-estado]')!;
+  let categoriaId = 0;
+  function mostrarFoto(id: number, clave: string | null) {
+    categoriaId = id;
+    previa.hidden = !clave;
+    vacia.hidden = !!clave;
+    quitar.hidden = !clave;
+    textoFoto.textContent = clave ? 'Cambiar foto' : 'Subir foto';
+    if (clave) previa.src = `/api/imagenes/${clave}/mediano.webp`;
+    archivo.value = '';
+  }
+  archivo.addEventListener('change', async () => {
+    const original = archivo.files?.[0];
+    if (!original) return;
+    const f = await recortar(original);
+    if (!f) return void (archivo.value = '');
+    try {
+      estadoFoto.textContent = 'Subiendo…';
+      const datos = new FormData();
+      datos.set('mediano', await aWebp(f, 900), 'mediano.webp');
+      const r = await fetch(`/api/admin/categorias/${categoriaId}/imagen`, { method: 'POST', body: datos });
+      if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'No se pudo subir la foto.');
+      location.reload();
+    } catch (e) {
+      estadoFoto.textContent = e instanceof Error ? e.message : 'No se pudo subir la foto.';
+    }
+  });
+  quitar.addEventListener('click', async () => {
+    const r = await fetch(`/api/admin/categorias/${categoriaId}/imagen`, { method: 'DELETE' });
+    if (r.ok) location.reload();
+    else estadoFoto.textContent = 'No se pudo quitar la foto.';
+  });
   ventana.querySelector('[data-cerrar]')?.addEventListener('click', () => ventana.close());
   ventana.addEventListener('click', (e) => e.target === ventana && ventana.close());
 }

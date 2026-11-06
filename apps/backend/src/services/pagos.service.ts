@@ -1,31 +1,38 @@
 import { ErrorApp } from '../utils/errores';
-import { numeroPedido } from '../utils/texto';
-import { cambiarEstado } from './estados.service';
+import { registrar } from '../utils/registro';
+import { leerConfiguracion } from './configuracion.service';
+import { enPesos, numeroPedido } from '../utils/texto';
+import { type Configuracion } from '../validations/tienda.validation';
+import { anotarParaRevisar, cambiarEstado } from './estados.service';
 import { type PedidoCompleto, cargarPedido } from './pedidos.service';
 
 // Mercado Pago por su API REST (Checkout Pro): la clienta paga en su sitio y la confirmación llega por webhook.
 // La tienda nunca ve datos de tarjetas.
 const API = 'https://api.mercadopago.com';
 
-async function mp<T>(env: Env, ruta: string, init?: RequestInit): Promise<T> {
+// Con `tolerar404`, un 404 (el recurso no existe) devuelve null en lugar de fallar.
+async function mp<T>(env: Env, ruta: string, init?: RequestInit, tolerar404 = false): Promise<T> {
   if (!env.MP_ACCESS_TOKEN) throw new ErrorApp(503, 'El pago con Mercado Pago todavía no está configurado.');
   const r = await fetch(`${API}${ruta}`, {
     ...init,
     headers: { authorization: `Bearer ${env.MP_ACCESS_TOKEN}`, 'content-type': 'application/json', ...init?.headers },
   });
+  if (tolerar404 && r.status === 404) return null as T;
   if (!r.ok) {
-    console.error('Mercado Pago', ruta, r.status, await r.text());
+    registrar('error', 'mercadopago_error', { ruta: ruta.split('?')[0], estado: r.status, respuesta: (await r.text()).slice(0, 300) });
     throw new ErrorApp(502, 'Mercado Pago no respondió. Probá de nuevo en un momento.');
   }
   return r.json();
 }
 
 // Crea la preferencia de pago y devuelve la dirección a la que hay que mandar a la clienta.
-export async function crearPreferencia(env: Env, pedido: PedidoCompleto) {
+// Si quien llama ya leyó la configuración, la pasa y no se vuelve a leer.
+export async function crearPreferencia(env: Env, pedido: PedidoCompleto, configLeida?: Configuracion) {
   if (pedido.estado !== 'pendiente_pago' || pedido.metodo_pago !== 'mercadopago') {
     throw new ErrorApp(409, 'Este pedido no está esperando un pago con Mercado Pago.');
   }
   const seguimiento = `${env.SITE_URL}/pedido/${pedido.token_seguimiento}`;
+  const config = configLeida ?? (await leerConfiguracion(env.DB));
   const preferencia = await mp<{ init_point: string }>(env, '/checkout/preferences', {
     method: 'POST',
     // Reintentar con el mismo pedido y el mismo vencimiento no crea preferencias distintas.
@@ -41,6 +48,12 @@ export async function crearPreferencia(env: Env, pedido: PedidoCompleto) {
           unit_price: pedido.total_centavos / 100,
         },
       ],
+      // Se ofrecen todos los medios (débito, crédito, dinero en cuenta) menos efectivo: el pedido reserva stock y el pago en
+      // efectivo tarda días. Con las cuotas apagadas se paga en un solo pago; encendidas, hasta la cantidad configurada.
+      payment_methods: {
+        excluded_payment_types: [{ id: 'ticket' }, { id: 'atm' }],
+        installments: config.cuotas_sin_interes ? config.cuotas_cantidad : 1,
+      },
       payer: { name: pedido.nombre, email: pedido.email },
       external_reference: String(pedido.id),
       notification_url: `${env.SITE_URL}/api/webhooks/mercadopago`,
@@ -92,15 +105,28 @@ type PagoMp = {
 // Procesa el aviso de un pago. Nunca se confía en el contenido del aviso: se consulta el pago a Mercado Pago.
 // Es idempotente: el mismo aviso puede llegar varias veces sin duplicar pagos ni cambios de estado.
 export async function procesarPago(env: Env, idPago: string) {
-  const pago = await mp<PagoMp>(env, `/v1/payments/${encodeURIComponent(idPago)}`);
+  // Un aviso de un pago que Mercado Pago no conoce (por ejemplo, la "simulación" del panel) se registra y se da por
+  // recibido: si se responde con error, Mercado Pago lo reintenta una y otra vez.
+  const pago = await mp<PagoMp | null>(env, `/v1/payments/${encodeURIComponent(idPago)}`, undefined, true);
+  if (!pago) {
+    registrar('warn', 'pago_inexistente', { pago: idPago });
+    return 'pago_inexistente';
+  }
   const idPedido = Number(pago.external_reference);
   if (!Number.isInteger(idPedido) || idPedido <= 0) return 'sin_pedido';
 
   const pedido = await cargarPedido(env.DB, { id: idPedido }).catch(() => null);
-  if (!pedido) return 'sin_pedido';
+  if (!pedido) {
+    registrar('warn', 'pago_sin_pedido', { pago: pago.id, referencia: pago.external_reference });
+    return 'sin_pedido';
+  }
 
   const estado = ESTADO_PAGO[pago.status] ?? 'pendiente';
   const monto = Math.round(pago.transaction_amount * 100);
+  // Cómo estaba este pago antes del aviso: los avisos a la dueña salen solo cuando cambia, no en cada repetición.
+  const previo = pedido.pagos.find((p) => p.proveedor === 'mercadopago' && p.id_externo === String(pago.id));
+  const cambio = previo?.estado !== estado;
+  registrar('info', 'aviso_de_pago', { pedido: pedido.numero, pago: pago.id, estadoMp: pago.status, estadoPedido: pedido.estado, cambio });
   await env.DB.prepare(
     `INSERT INTO pago (pedido_id, proveedor, id_externo, estado, monto_centavos, respuesta_proveedor)
      VALUES (?, 'mercadopago', ?, ?, ?, ?)
@@ -118,6 +144,20 @@ export async function procesarPago(env: Env, idPago: string) {
     )
     .run();
 
+  // Ni el pago doble ni la devolución cambian el estado del pedido: lo decide la dueña desde el panel.
+  if (cambio && estado === 'aprobado' && pedido.pagos.some((p) => p !== previo && p.estado === 'aprobado')) {
+    await anotarParaRevisar(
+      env,
+      pedido,
+      `Llegó un segundo pago aprobado (Mercado Pago ${pago.id}, ${enPesos(monto)}) para un pedido que ya estaba pagado: se cobró dos veces. Devolvé uno desde Mercado Pago.`,
+    );
+    return 'pago_doble';
+  }
+  if (cambio && previo?.estado === 'aprobado' && pedido.estado !== 'reembolsado') {
+    const que = pago.status === 'charged_back' ? 'un contracargo: la clienta desconoció el pago ante su tarjeta' : 'que el pago se devolvió o se anuló';
+    await anotarParaRevisar(env, pedido, `Mercado Pago informó ${que} (pago ${pago.id}). Si el pedido todavía no salió, no lo despaches.`);
+    return estado;
+  }
   if (estado !== 'aprobado') return estado;
 
   const auto = { adminId: null };
@@ -151,4 +191,17 @@ export async function procesarPago(env: Env, idPago: string) {
     if (!(e instanceof ErrorApp)) throw e;
   }
   return estado;
+}
+
+// Devuelve a la clienta, por Mercado Pago, el total del pago aprobado del pedido (reembolso completo). La clave de
+// idempotencia evita devolver dos veces si se repite el clic. Si Mercado Pago falla, tira el error y el pedido no cambia.
+export async function reembolsarEnMercadoPago(env: Env, pedido: PedidoCompleto) {
+  const pago = pedido.pagos.find((p) => p.proveedor === 'mercadopago' && p.estado === 'aprobado' && p.id_externo);
+  if (!pago) throw new ErrorApp(409, 'Este pedido no tiene un pago aprobado de Mercado Pago para devolver.');
+  await mp(env, `/v1/payments/${encodeURIComponent(String(pago.id_externo))}/refunds`, {
+    method: 'POST',
+    headers: { 'x-idempotency-key': `reembolso-${pedido.numero}-${String(pago.id_externo)}` },
+    body: '{}',
+  });
+  registrar('info', 'reembolso_en_mercadopago', { pedido: pedido.numero, pago: pago.id_externo });
 }

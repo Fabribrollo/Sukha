@@ -1,0 +1,77 @@
+---
+// Redirecciones: si alguien entra a una dirección vieja de la tienda, la manda a la nueva. Las automáticas se crean solas
+// al cambiar la dirección de un producto, categoría o colección; acá se ven todas y se pueden cargar a mano.
+import { ArrowRight, Plus, Signpost, Trash2, X } from '@lucide/astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { errorDe, fecha, txt } from '../../lib/panel';
+
+export const prerender = false;
+
+let error = '';
+let altaFallida = false;
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r =
+    f.get('accion') === 'borrar'
+      ? await api(Astro.request, `/api/admin/redirecciones/${f.get('id')}`, undefined, 'DELETE')
+      : await api(Astro.request, '/api/admin/redirecciones', { desde: txt(f, 'desde'), hacia: txt(f, 'hacia'), tipo: Number(f.get('tipo')) });
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  altaFallida = f.get('accion') !== 'borrar';
+  error = await errorDe(r);
+}
+
+const lista = await leer<any[]>(Astro.request, '/api/admin/redirecciones');
+---
+
+<Panel titulo="Redirecciones" error={error}>
+	<button slot="acciones" type="button" data-alta="alta-redireccion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva</button>
+
+	<Tarjeta alRas>
+		{lista.length === 0 ? <Vacio texto="Todavía no hay redirecciones"><Signpost aria-hidden="true" /></Vacio> : (
+			<div class="overflow-x-auto">
+				<table class="tabla-tarjetas min-w-full">
+					<thead class="border-b border-gray-100"><tr><th class="th">Desde</th><th class="th">Hacia</th><th class="th">Tipo</th><th class="th">Creada</th><th class="th"><span class="sr-only">Acciones</span></th></tr></thead>
+					<tbody class="divide-y divide-gray-100">
+						{lista.map((r) => (
+							<tr>
+								<td class="td font-medium break-all text-gray-800">{r.desde}</td>
+								<td class="td break-all"><a href={r.hacia} target="_blank" rel="noopener" class="text-brand-500 hover:underline">{r.hacia}</a></td>
+								<td class="td"><span class="flex flex-wrap gap-1"><Insignia color={r.tipo === 301 ? 'azul' : 'ambar'}>{r.tipo === 301 ? 'Permanente' : 'Temporal'}</Insignia>{r.automatica === 1 && <Insignia>Automática</Insignia>}</span></td>
+								<td class="td whitespace-nowrap">{fecha(r.creadoEn)}</td>
+								<td class="td">
+									<details class="group flex items-center justify-end">
+										<summary class="btn-icono hover:bg-error-50 hover:text-error-600 group-open:hidden" title="Borrar" aria-label={`Borrar la redirección desde ${r.desde}`}><Trash2 class="size-5" aria-hidden="true" /></summary>
+										<form method="post">
+											<input type="hidden" name="accion" value="borrar" /><input type="hidden" name="id" value={r.id} />
+											<button class="btn btn-peligro px-3 py-2"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+										</form>
+									</details>
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)}
+	</Tarjeta>
+
+	<dialog id="alta-redireccion" data-abrir={altaFallida ? '' : undefined} class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="alta-redireccion-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="alta-redireccion-titulo" class="text-base font-medium text-gray-800">Nueva redirección</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<label class="block"><span class="etiqueta">Desde</span><input name="desde" required maxlength="300" placeholder="/producto/vestido-viejo" class="campo" /></label>
+			<label class="block"><span class="etiqueta">Hacia</span><input name="hacia" required maxlength="300" placeholder="/producto/vestido-nuevo" class="campo" /></label>
+			<label class="block"><span class="etiqueta">Tipo</span>
+				<select name="tipo" class="campo"><option value="301">Permanente (301)</option><option value="302">Temporal (302)</option></select>
+			</label>
+			<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Agregar</button>
+		</form>
+	</dialog>
+</Panel>
+<script src="../../scripts/alta.ts"></script>

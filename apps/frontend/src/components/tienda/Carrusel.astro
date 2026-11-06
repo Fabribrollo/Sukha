@@ -31,10 +31,10 @@ const proporcion = banners.some((b) => b.claveMovil) ? 'aspect-[9/11] md:aspect-
 
 	{banners.length > 1 && (
 		<>
-			<button type="button" data-anterior class="boton-icono absolute top-1/2 left-3 hidden -translate-y-1/2 bg-white/80 shadow md:inline-flex" title="Anterior" aria-label="Banner anterior"><ChevronLeft class="size-5" aria-hidden="true" /></button>
-			<button type="button" data-siguiente class="boton-icono absolute top-1/2 right-3 hidden -translate-y-1/2 bg-white/80 shadow md:inline-flex" title="Siguiente" aria-label="Banner siguiente"><ChevronRight class="size-5" aria-hidden="true" /></button>
+			<button type="button" data-anterior class="boton-icono absolute top-1/2 left-3 hidden -translate-y-1/2 bg-fondo/80 md:inline-flex" title="Anterior" aria-label="Banner anterior"><ChevronLeft class="size-5" aria-hidden="true" /></button>
+			<button type="button" data-siguiente class="boton-icono absolute top-1/2 right-3 hidden -translate-y-1/2 bg-fondo/80 md:inline-flex" title="Siguiente" aria-label="Banner siguiente"><ChevronRight class="size-5" aria-hidden="true" /></button>
 			<div class="absolute right-0 bottom-3 left-0 flex justify-center gap-2">
-				{banners.map((_, i) => <button type="button" data-punto={i} class="relative size-2.5 rounded-full bg-white/60 ring-1 ring-black/10 before:absolute before:-inset-x-1.5 before:-inset-y-4 before:content-[''] aria-[current=true]:bg-white aria-[current=true]:ring-black/30 aria-[current=true]:ring-2" aria-label={`Ir al banner ${i + 1}`} aria-current={i === 0 ? 'true' : undefined}></button>)}
+				{banners.map((_, i) => <button type="button" data-punto={i} class="relative size-2.5 bg-fondo/60 ring-1 ring-texto/10 before:absolute before:-inset-x-1.5 before:-inset-y-4 before:content-[''] aria-[current=true]:bg-fondo aria-[current=true]:ring-texto/30 aria-[current=true]:ring-2" aria-label={`Ir al banner ${i + 1}`} aria-current={i === 0 ? 'true' : undefined}></button>)}
 			</div>
 		</>
 	)}

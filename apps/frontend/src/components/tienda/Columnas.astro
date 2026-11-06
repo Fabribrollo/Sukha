@@ -1,0 +1,18 @@
+---
+// Hasta tres columnas de texto con título (envíos, retiro, pagos…), separadas por líneas finas. Editable en /admin/portada.
+interface Props {
+  items: { titulo: string; texto: string }[];
+}
+const { items } = Astro.props;
+---
+
+<section class="contenedor mt-12 md:mt-20">
+	<div class="border-linea grid divide-y border-y md:grid-flow-col md:auto-cols-fr md:divide-x md:divide-y-0">
+		{items.map((i, n) => (
+			<div data-item={n} class="flex flex-col gap-2 py-8 md:px-8 md:first:pl-0 md:last:pr-0">
+				{i.titulo && <p data-campo="titulo" class="text-xs font-medium tracking-[0.24em] uppercase">{i.titulo}</p>}
+				{i.texto && <p data-campo="texto" class="text-suave leading-relaxed whitespace-pre-line">{i.texto}</p>}
+			</div>
+		))}
+	</div>
+</section>

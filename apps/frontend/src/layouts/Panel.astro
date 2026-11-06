@@ -1,19 +1,26 @@
 ---
 import '../styles/panel.css';
 import {
+  ChartColumn,
   CircleAlert,
   CircleCheck,
+  FileText,
   FolderTree,
+  LayoutPanelTop,
+  PanelTop,
   Sparkles,
-  Image,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu,
   Palette,
   Settings,
   Shirt,
+  Signpost,
   ShoppingBag,
+  ShoppingCart,
   Store,
+  Tag,
   TicketPercent,
   TriangleAlert,
   Truck,
@@ -29,8 +36,10 @@ interface Props {
   aviso?: string;
   // Enlace "volver" que se muestra arriba del título, en las páginas de detalle.
   volver?: { href: string; texto: string };
+  // Pantalla de trabajo que aprovecha todo el ancho (editor de portada).
+  ancho?: boolean;
 }
-const { titulo, error, aviso, volver } = Astro.props;
+const { titulo, error, aviso, volver, ancho } = Astro.props;
 // Después de guardar, las páginas redirigen a sí mismas con ?ok para mostrar la confirmación.
 const guardado = Astro.url.searchParams.has('ok');
 
@@ -40,8 +49,10 @@ const grupos = [
     items: [
       ['/admin', 'Inicio', LayoutDashboard],
       ['/admin/pedidos', 'Ventas', ShoppingBag],
+      ['/admin/carritos', 'Carritos abandonados', ShoppingCart],
       ['/admin/solicitudes', 'Post-venta', Undo2],
       ['/admin/clientas', 'Clientas', Users],
+      ['/admin/reportes', 'Reportes', ChartColumn],
     ],
   },
   {
@@ -56,10 +67,14 @@ const grupos = [
   {
     nombre: 'Tienda',
     items: [
-      ['/admin/banners', 'Banners', Image],
+      ['/admin/portada', 'Portada', LayoutPanelTop],
+      ['/admin/cabecera', 'Cabecera', PanelTop],
+      ['/admin/promociones', 'Promociones', Tag],
       ['/admin/cupones', 'Cupones', TicketPercent],
       ['/admin/envios', 'Envíos', Truck],
-      ['/admin/configuracion', 'Configuración', Settings],
+      ['/admin/emails', 'Emails', Mail],
+      ['/admin/textos', 'Textos y legales', FileText],
+      ['/admin/redirecciones', 'Redirecciones', Signpost],
     ],
   },
 ] as const;
@@ -75,6 +90,9 @@ const admin = Astro.locals.admin;
 		<meta name="robots" content="noindex" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>{titulo} · Panel Sukhä</title>
+		{/* Cambio de pantalla instantáneo (Chrome y Edge): al apoyar el mouse o el dedo en un link del panel, el navegador arma
+		    esa página por detrás; al tocarlo, aparece al instante. Se dejan afuera las descargas (/api) y el cierre de sesión. */}
+		<script type="speculationrules" is:inline set:html={JSON.stringify({ prerender: [{ where: { and: [{ href_matches: ['/admin', '/admin/*'] }, { not: { href_matches: '/admin/login' } }, { not: { selector_matches: '[target], [download]' } }] }, eagerness: 'moderate' }] })} />
 	</head>
 	<body>
 		<!-- En el celular el menú se abre y se cierra con esta casilla, sin JavaScript. -->
@@ -102,6 +120,13 @@ const admin = Astro.locals.admin;
 					</div>
 				))}
 			</nav>
+			<!-- Configuración va abajo, apartada del resto, para no tocarla sin querer. -->
+			<div class="shrink-0 border-t border-gray-200 p-4">
+				<a href="/admin/configuracion" aria-current={actual('/admin/configuracion') ? 'page' : undefined} class:list={['menu-item', actual('/admin/configuracion') ? 'menu-item-active' : 'menu-item-inactive']}>
+					<Settings class:list={['size-5 shrink-0', actual('/admin/configuracion') ? 'text-brand-500' : 'text-gray-500']} aria-hidden="true" />
+					Configuración
+				</a>
+			</div>
 		</aside>
 		<label for="menu" class="fixed inset-0 z-30 hidden bg-gray-900/50 peer-checked:block lg:hidden" aria-hidden="true"></label>
 
@@ -118,7 +143,7 @@ const admin = Astro.locals.admin;
 				</form>
 			</header>
 
-			<main class="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+			<main class:list={['mx-auto space-y-5 p-4 sm:p-6', ancho ? 'max-w-none' : 'max-w-6xl']}>
 				<div>
 					{volver && <a href={volver.href} class="hover:text-brand-500 text-theme-sm mb-1 inline-block text-gray-500">← {volver.texto}</a>}
 					<div class="flex flex-wrap items-center justify-between gap-3">
@@ -140,7 +165,7 @@ const admin = Astro.locals.admin;
 					</div>
 				)}
 				{!error && !aviso && guardado && (
-					<div class="border-success-500 bg-success-50 flex items-center gap-3 rounded-xl border p-4" role="status">
+					<div class="aviso-flotante border-success-500 shadow-theme-lg fixed bottom-5 left-1/2 z-50 flex items-center gap-2 rounded-xl border bg-white px-4 py-3" role="status">
 						<CircleCheck class="text-success-500 size-5 shrink-0" aria-hidden="true" />
 						<p class="text-sm font-medium text-gray-800">Guardado</p>
 					</div>

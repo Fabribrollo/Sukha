@@ -9,11 +9,12 @@ import {
   CONDICIONES_IVA, PROVINCIAS, cargarDatos, claveDelPedido, cpValido, erroresContacto, erroresEntrega, erroresPago, guardarDatos, soloDigitos, terminarCompra,
   type Datos, type Errores, type Modalidad,
 } from '../../lib/checkout';
-import { pesos, urlFoto, type Tienda } from '../../lib/formato';
+import Autocompletar from './Autocompletar';
+import { MENSAJE_PESO_EXCEDIDO, enlaceWhatsapp, pesos, urlFoto, type Tienda } from '../../lib/formato';
 import { useValidacion } from '../../lib/useValidacion';
 import { NOMBRES_CORREO } from './CotizadorEnvio';
 
-type DatosTienda = Pick<Tienda, 'descuentoTransferenciaPorcentaje' | 'cuotasSinInteres' | 'retiro' | 'reservaMercadoPagoMinutos' | 'reservaTransferenciaHoras' | 'maxUnidadesPorPedido'>;
+type DatosTienda = Pick<Tienda, 'descuentoTransferenciaPorcentaje' | 'cuotasSinInteres' | 'retiro' | 'reservaMercadoPagoMinutos' | 'reservaTransferenciaHoras' | 'maxUnidadesPorPedido' | 'whatsapp'>;
 
 // ───────────── Piezas ─────────────
 function Campo({ id, etiqueta, error, ayuda, children }: { id: string; etiqueta: string; error?: string; ayuda?: string; children: ComponentChildren }) {
@@ -34,23 +35,23 @@ function Campo({ id, etiqueta, error, ayuda, children }: { id: string; etiqueta:
 }
 
 function Paso({ numero, titulo, estado, resumen, alEditar, children }: { numero: number; titulo: string; estado: 'activo' | 'hecho' | 'pendiente'; resumen?: ComponentChildren; alEditar?: () => void; children?: ComponentChildren }) {
+  // Pasos como en el diseño: líneas finas en lugar de cajas; el que se está completando lleva la línea de tinta arriba.
   return (
-    <section class={`border-linea rounded-tienda border ${estado === 'pendiente' ? 'opacity-60' : ''}`} aria-labelledby={`paso-${numero}`}>
-      <header class="flex items-start gap-3 p-4 sm:p-5">
-        <span class={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${estado === 'hecho' ? 'bg-exito text-white' : estado === 'activo' ? 'bg-primario text-primario-texto' : 'bg-gris text-suave'}`}>{estado === 'hecho' ? <Check class="size-4" aria-hidden="true" /> : numero}</span>
+    <section class={`${estado === 'activo' ? 'border-texto' : 'border-linea'} border-t py-7 ${estado === 'pendiente' ? 'border-b' : ''}`} aria-labelledby={`paso-${numero}`}>
+      <header class="flex items-start justify-between gap-6">
         <div class="min-w-0 flex-1">
-          <h2 id={`paso-${numero}`} class="text-lg leading-8 font-semibold">
-            {titulo}
+          <h2 id={`paso-${numero}`} class={`font-sans text-xs font-medium tracking-[0.24em] uppercase ${estado === 'pendiente' ? 'text-suave' : ''}`}>
+            {numero} · {titulo}
           </h2>
-          {estado === 'hecho' && <div class="text-suave mt-0.5 text-sm break-words">{resumen}</div>}
+          {estado === 'hecho' && <div class="text-suave mt-2 text-base leading-relaxed break-words">{resumen}</div>}
         </div>
         {estado === 'hecho' && alEditar && (
-          <button type="button" onClick={alEditar} class="text-sm font-medium underline underline-offset-4">
+          <button type="button" onClick={alEditar} class="min-h-11 text-sm underline underline-offset-4">
             Editar
           </button>
         )}
       </header>
-      {estado === 'activo' && <div class="border-linea space-y-4 border-t p-4 sm:p-5">{children}</div>}
+      {estado === 'activo' && <div class="space-y-4 pt-5">{children}</div>}
     </section>
   );
 }
@@ -68,17 +69,16 @@ function Resumen({ idBase, lineas, v, cargando, error, hayEnvio, retiro, cupon, 
         {lineas.map((l) => {
           const precio = v?.lineas.find((x) => x.varianteId === l.varianteId)?.precioCentavos ?? l.precioCentavos;
           return (
-            <li key={l.varianteId} class="flex items-center gap-3">
+            <li key={l.varianteId} class="flex items-center gap-4">
               <span class="relative shrink-0">
-                {l.foto ? <img src={urlFoto(l.foto, 'chico')} alt="" width={56} height={75} class="rounded-tienda h-[75px] w-14 object-cover" /> : <span class="foto-vacia rounded-tienda block h-[75px] w-14" />}
-                <span class="bg-suave absolute -top-2 -right-2 flex size-5 items-center justify-center rounded-full text-[11px] font-semibold text-white" aria-hidden="true">{l.cantidad}</span>
+                {l.foto ? <img src={urlFoto(l.foto, 'chico')} alt="" width={64} height={84} class="rounded-tienda h-[84px] w-16 object-cover" /> : <span class="foto-vacia rounded-tienda block h-[84px] w-16" />}
               </span>
-              <span class="min-w-0 flex-1 text-sm">
-                <span class="line-clamp-2 font-medium">{l.nombre}</span>
-                <span class="text-suave block text-xs">{[l.talle && `Talle ${l.talle}`, l.color].filter(Boolean).join(' · ')}</span>
+              <span class="min-w-0 flex-1">
+                <span class="line-clamp-2 block text-[15px]">{l.nombre}</span>
+                <span class="text-suave mt-1 block text-[13px]">{[l.color, l.talle, l.cantidad].filter(Boolean).join(' · ')}</span>
                 <span class="sr-only">Cantidad: {l.cantidad}</span>
               </span>
-              <span class="text-sm font-medium tabular-nums">{pesos(precio * l.cantidad)}</span>
+              <span class="text-[15px] tabular-nums">{pesos(precio * l.cantidad)}</span>
             </li>
           );
         })}
@@ -161,6 +161,28 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
   const [intentos, setIntentos] = useState<Record<number, boolean>>({});
   const [tocados, setTocados] = useState<Record<string, boolean>>({});
   const [opciones, setOpciones] = useState<OpcionEnvio[] | null>(null);
+  // El pedido pesa más de 10 kg: no se ofrece envío desde la tienda.
+  const [excede, setExcede] = useState(false);
+  // Localidad elegida de la lista: acota las sugerencias de calles. No se guarda ni se manda al pedido.
+  const [localidadCensal, setLocalidadCensal] = useState<string | null>(null);
+  const [localidadesSugeridas, setLocalidadesSugeridas] = useState<{ nombre: string; detalle: string; censalId: string | null }[]>([]);
+  const pedirLista = async (ruta: string, senal: AbortSignal) => {
+    const r = await fetch(ruta, { signal: senal });
+    if (!r.ok) throw new Error('Sugerencias no disponibles');
+    return (await r.json()) as any[];
+  };
+  const buscarLocalidad = async (texto: string, senal: AbortSignal) => {
+    if (!d.provincia) return [];
+    const lista = await pedirLista(`/api/georef/localidades?provincia=${encodeURIComponent(d.provincia)}&q=${encodeURIComponent(texto)}`, senal);
+    setLocalidadesSugeridas(lista);
+    return lista.map((l) => ({ texto: l.nombre as string, detalle: l.detalle as string }));
+  };
+  const buscarCalle = async (texto: string, senal: AbortSignal) => {
+    if (!d.provincia) return [];
+    const censal = localidadCensal ? `&localidad=${localidadCensal}` : '';
+    const lista = await pedirLista(`/api/georef/calles?provincia=${encodeURIComponent(d.provincia)}${censal}&q=${encodeURIComponent(texto)}`, senal);
+    return lista.map((c) => ({ texto: c.nombre as string }));
+  };
   const [buscandoEnvio, setBuscandoEnvio] = useState(false);
   const [errorEnvio, setErrorEnvio] = useState('');
   const [cuponTexto, setCuponTexto] = useState('');
@@ -175,6 +197,11 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
   const cambiar = (campos: Partial<Datos>) => setD((a) => ({ ...a, ...campos }));
   const tocar = (campo: string) => setTocados((t) => ({ ...t, [campo]: true }));
   useEffect(() => guardarDatos(d), [d]);
+  // Al cambiar de tipo de envío aparecen campos nuevos: los errores esperan a que la persona toque o intente avanzar.
+  useEffect(() => {
+    setIntentos((a) => ({ ...a, 2: false }));
+    setTocados({});
+  }, [d.zonaEnvioId, d.retiro]);
 
   // Si no hay nada en el carrito, no hay nada que pagar.
   useEffect(() => {
@@ -193,12 +220,14 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
       setBuscandoEnvio(true);
       setErrorEnvio('');
       try {
-        const r = await fetch('/api/envios/cotizar', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ codigoPostal: d.codigoPostal.trim().toUpperCase() }), signal: control.signal });
+        const r = await fetch('/api/envios/cotizar', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ codigoPostal: d.codigoPostal.trim().toUpperCase(), items: carrito.get().map((l) => ({ varianteId: l.varianteId, cantidad: l.cantidad })) }), signal: control.signal });
         const cuerpo = (await r.json()) as any;
         if (!r.ok) throw new Error(cuerpo?.error ?? 'No pudimos calcular el envío.');
-        setOpciones(cuerpo as OpcionEnvio[]);
+        const lista = (Array.isArray(cuerpo) ? cuerpo : cuerpo.opciones) as OpcionEnvio[];
+        setOpciones(lista);
+        setExcede(Boolean(cuerpo.excedePeso));
         // Si la opción elegida ya no llega a este código postal, se desmarca.
-        setD((a) => (a.zonaEnvioId !== null && !(cuerpo as OpcionEnvio[]).some((o) => o.zonaEnvioId === a.zonaEnvioId) ? { ...a, zonaEnvioId: null } : a));
+        setD((a) => (a.zonaEnvioId !== null && !lista.some((o) => o.zonaEnvioId === a.zonaEnvioId) ? { ...a, zonaEnvioId: null } : a));
       } catch (e) {
         if ((e as Error).name !== 'AbortError') setErrorEnvio(e instanceof Error ? e.message : 'No pudimos calcular el envío.');
       } finally {
@@ -234,8 +263,26 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
   const continuar = (n: number, errores: Errores) => {
     setIntentos((a) => ({ ...a, [n]: true }));
     if (Object.keys(errores).length) return alPrimerError();
+    avisarCarrito(n);
     setPaso(n + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Carrito abandonado: al seguir de un paso se guarda el email (y, después del paso 2, nombre y teléfono) con el carrito,
+  // para que la tienda pueda escribirle si no termina. Si falla, no molesta: la compra sigue igual.
+  const avisarCarrito = (n: number) => {
+    if (!lineas.length) return;
+    fetch('/api/carritos', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: d.email.trim(),
+        nombre: d.nombre.trim() || null,
+        telefono: d.telefono.trim() || null,
+        items: lineas.map((l) => ({ varianteId: l.varianteId, cantidad: l.cantidad })),
+      }),
+      keepalive: true,
+    }).catch(() => {});
   };
 
   const propiedades = (id: string, error?: string) => ({ id, 'aria-invalid': error ? true : undefined, 'aria-describedby': error ? `${id}-error` : undefined, onBlur: () => tocar(id) });
@@ -273,6 +320,7 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
           cupon: cuponAplicado && !v?.cuponRechazado ? cuponAplicado : null,
           aceptaNovedades: d.aceptaNovedades,
           ...(d.facturaA ? { cuit: soloDigitos(d.cuit), condicionIva: d.condicionIva } : {}),
+          nota: d.nota.trim() || null,
           comentarioExtra: senuelo,
         }),
       });
@@ -301,10 +349,10 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
     alAplicarCupon: () => setCuponAplicado(cuponTexto.trim().toUpperCase()), alQuitarCupon: () => (setCuponAplicado(''), setCuponTexto('')),
   };
   const totalTexto = pesos(v?.totalCentavos ?? lineas.reduce((s, l) => s + l.precioCentavos * l.cantidad, 0));
-  const tarjetaOpcion = (activa: boolean) => `rounded-tienda flex min-h-14 cursor-pointer items-center gap-3 border p-3 ${activa ? 'border-texto bg-gris' : 'border-linea hover:border-texto'}`;
+  const tarjetaOpcion = (activa: boolean) => `rounded-tienda flex min-h-[72px] cursor-pointer items-center gap-4 border px-5 py-3 ${activa ? 'border-texto bg-gris' : 'border-linea hover:border-texto'}`;
 
   return (
-    <div class="grid gap-6 lg:grid-cols-[1fr_400px] lg:gap-12">
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-20">
       {/* Resumen plegable (celular) */}
       <details class="border-linea rounded-tienda border lg:hidden">
         <summary class="flex items-center justify-between p-4 text-sm font-medium">
@@ -320,14 +368,27 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
 
       <div class="space-y-4">
         {/* ───────────── 1. Contacto ───────────── */}
-        <Paso numero={1} titulo="Contacto" estado={paso === 1 ? 'activo' : 'hecho'} alEditar={() => setPaso(1)} resumen={d.email}>
-          <Campo id="email" etiqueta="Email" error={mostrar(1, 'email', e1)} ayuda="Ahí te mandamos la confirmación y el seguimiento.">
+        <Paso numero={1} titulo="Tus datos" estado={paso === 1 ? 'activo' : 'hecho'} alEditar={() => setPaso(1)} resumen={`${d.nombre} · ${d.email} · ${d.telefono}`}>
+          <Campo id="email" etiqueta="Email" error={mostrar(1, 'email', e1)}>
             <input {...propiedades('email', mostrar(1, 'email', e1))} type="email" autoComplete="email" inputMode="email" value={d.email} onInput={(e) => cambiar({ email: (e.target as HTMLInputElement).value })} class="campo" />
+          </Campo>
+          <Campo id="nombre" etiqueta="Nombre y apellido" error={mostrar(1, 'nombre', e1)}>
+            <input {...propiedades('nombre', mostrar(1, 'nombre', e1))} autoComplete="name" value={d.nombre} onInput={(e) => cambiar({ nombre: (e.target as HTMLInputElement).value })} class="campo" />
+          </Campo>
+          <Campo id="telefono" etiqueta="Teléfono" error={mostrar(1, 'telefono', e1)}>
+            <input {...propiedades('telefono', mostrar(1, 'telefono', e1))} type="tel" autoComplete="tel" inputMode="tel" value={d.telefono} onInput={(e) => cambiar({ telefono: (e.target as HTMLInputElement).value })} class="campo" />
           </Campo>
           <label class="flex cursor-pointer items-center gap-3 text-sm">
             <input type="checkbox" checked={d.aceptaNovedades} onChange={(e) => cambiar({ aceptaNovedades: (e.target as HTMLInputElement).checked })} class="size-5 rounded" />
-            Quiero recibir novedades y promociones
+            Quiero recibir lanzamientos y promociones por email. Me puedo dar de baja cuando quiera.
           </label>
+          <p class="text-suave text-xs">
+            Guardamos tu email y tu carrito para ayudarte a terminar tu compra si no la completás. Ver{' '}
+            <a href="/privacidad" target="_blank" rel="noopener" class="underline underline-offset-4">
+              política de privacidad
+            </a>
+            .
+          </p>
           <button type="button" class="boton boton-primario w-full sm:w-auto" onClick={() => continuar(1, e1)}>
             Continuar
           </button>
@@ -341,7 +402,6 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
           alEditar={() => setPaso(2)}
           resumen={
             <>
-              <span class="block">{d.nombre} · {d.telefono}</span>
               <span class="block">
                 {modalidad === 'retiro' ? `Retiro en persona${tienda.retiro ? `: ${tienda.retiro.direccion}` : ''}` : modalidad === 'sucursal' ? `${NOMBRES_CORREO[opcion!.transporte]} a sucursal: ${d.sucursal}` : `${d.calle} ${d.altura}${d.pisoDepto ? `, ${d.pisoDepto}` : ''}, ${d.localidad}, ${d.provincia}`}
               </span>
@@ -363,17 +423,15 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
               )}
               <div class="space-y-2">
                 {opciones?.map((o) => {
-                  const Icono = o.modalidad === 'sucursal' ? MapPin : Home;
                   const activa = !d.retiro && d.zonaEnvioId === o.zonaEnvioId;
                   return (
                     <label key={o.zonaEnvioId} class={tarjetaOpcion(activa)}>
-                      <input type="radio" name="envio" checked={activa} onChange={() => cambiar({ zonaEnvioId: o.zonaEnvioId, retiro: false })} class="size-4" />
-                      <Icono class="text-suave size-5 shrink-0" aria-hidden="true" />
-                      <span class="min-w-0 flex-1 text-sm">
-                        <span class="block font-medium">{NOMBRES_CORREO[o.transporte]}</span>
-                        <span class="text-suave block text-xs">{o.modalidad === 'sucursal' ? 'A sucursal' : 'A domicilio'} · {o.nombre}</span>
+                      <input type="radio" name="envio" checked={activa} onChange={() => cambiar({ zonaEnvioId: o.zonaEnvioId, retiro: false })} class="accent-texto size-[18px]" />
+                      <span class="min-w-0 flex-1">
+                        <span class="block text-base">{o.modalidad === 'sucursal' ? 'Envío a sucursal' : 'Envío a domicilio'} · {NOMBRES_CORREO[o.transporte]}</span>
+                        <span class="text-suave block text-sm">{o.nombre}</span>
                       </span>
-                      <span class={`text-sm font-semibold ${gratis(o) || o.precioCentavos === 0 ? 'text-exito' : ''}`}>{gratis(o) || o.precioCentavos === 0 ? 'Gratis' : pesos(o.precioCentavos)}</span>
+                      <span class="text-base">{gratis(o) || o.precioCentavos === 0 ? 'Gratis' : pesos(o.precioCentavos)}</span>
                     </label>
                   );
                 })}
@@ -388,7 +446,14 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
                     <span class="text-exito text-sm font-semibold">Gratis</span>
                   </label>
                 )}
-                {opciones && opciones.length === 0 && !tienda.retiro && <p class="text-suave text-sm">Todavía no enviamos a ese código postal. Escribinos y lo vemos.</p>}
+                {excede && (
+                  <p class="bg-aviso-fondo text-aviso rounded-tienda p-3 text-sm">
+                    Tu pedido pesa más de 10 kg: el envío se cotiza aparte.{' '}
+                    {tienda.whatsapp && <a href={enlaceWhatsapp(tienda.whatsapp, MENSAJE_PESO_EXCEDIDO)} target="_blank" rel="noopener" class="font-semibold underline">Consultalo por WhatsApp</a>}
+                    {tienda.retiro && ' O elegí retirarlo en persona.'}
+                  </p>
+                )}
+                {!excede && opciones && opciones.length === 0 && !tienda.retiro && <p class="text-suave text-sm">Todavía no enviamos a ese código postal. Escribinos y lo vemos.</p>}
               </div>
               {e2.envio && intentos[2] && !buscandoEnvio && (
                 <p id="envio-error" class="text-oferta mt-2 text-sm" role="alert">
@@ -401,22 +466,27 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
           {modalidad && (
             <>
               <div class="grid gap-4 sm:grid-cols-2">
-                <div class="sm:col-span-2">
-                  <Campo id="nombre" etiqueta="Nombre y apellido" error={mostrar(2, 'nombre', e2)}>
-                    <input {...propiedades('nombre', mostrar(2, 'nombre', e2))} autoComplete="name" value={d.nombre} onInput={(e) => cambiar({ nombre: (e.target as HTMLInputElement).value })} class="campo" />
-                  </Campo>
-                </div>
-                <Campo id="telefono" etiqueta="Teléfono" error={mostrar(2, 'telefono', e2)} ayuda="Con código de área, por si el correo necesita avisarte.">
-                  <input {...propiedades('telefono', mostrar(2, 'telefono', e2))} type="tel" autoComplete="tel" inputMode="tel" value={d.telefono} onInput={(e) => cambiar({ telefono: (e.target as HTMLInputElement).value })} class="campo" />
-                </Campo>
-                <Campo id="dni" etiqueta="DNI" error={mostrar(2, 'dni', e2)} ayuda="Solo números, sin puntos.">
+                <Campo id="dni" etiqueta="DNI" error={mostrar(2, 'dni', e2)}>
                   <input {...propiedades('dni', mostrar(2, 'dni', e2))} inputMode="numeric" autoComplete="off" value={d.dni} onInput={(e) => cambiar({ dni: (e.target as HTMLInputElement).value })} class="campo" />
                 </Campo>
 
+                {modalidad !== 'retiro' && (
+                  <Campo id="provincia" etiqueta="Provincia" error={mostrar(2, 'provincia', e2)}>
+                    <select {...propiedades('provincia', mostrar(2, 'provincia', e2))} autoComplete="address-level1" value={d.provincia} onChange={(e) => (setLocalidadCensal(null), cambiar({ provincia: (e.target as HTMLSelectElement).value, localidadValida: false }))} class="campo pr-10">
+                      <option value="">Elegí una provincia</option>
+                      {PROVINCIAS.map((p) => (
+                        <option value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </Campo>
+                )}
                 {modalidad === 'domicilio' && (
                   <>
+                    <Campo id="localidad" etiqueta="Localidad" error={mostrar(2, 'localidad', e2)}>
+                      <Autocompletar id="localidad" value={d.localidad} onInput={(v) => (setLocalidadCensal(null), cambiar({ localidad: v, localidadValida: false }))} buscar={buscarLocalidad} alElegir={(i) => (setLocalidadCensal(localidadesSugeridas[i]?.censalId ?? null), cambiar({ localidadValida: true }))} alBuscar={(n) => n === null && cambiar({ localidadValida: true })} entrada={{ ...propiedades('localidad', mostrar(2, 'localidad', e2)), autoComplete: 'off' }} />
+                    </Campo>
                     <Campo id="calle" etiqueta="Calle" error={mostrar(2, 'calle', e2)}>
-                      <input {...propiedades('calle', mostrar(2, 'calle', e2))} autoComplete="address-line1" value={d.calle} onInput={(e) => cambiar({ calle: (e.target as HTMLInputElement).value })} class="campo" />
+                      <Autocompletar id="calle" value={d.calle} onInput={(v) => cambiar({ calle: v })} buscar={buscarCalle} entrada={{ ...propiedades('calle', mostrar(2, 'calle', e2)), autoComplete: 'off' }} />
                     </Campo>
                     <Campo id="altura" etiqueta="Altura" error={mostrar(2, 'altura', e2)}>
                       <input {...propiedades('altura', mostrar(2, 'altura', e2))} inputMode="numeric" value={d.altura} onInput={(e) => cambiar({ altura: (e.target as HTMLInputElement).value })} class="campo" />
@@ -424,15 +494,12 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
                     <Campo id="pisoDepto" etiqueta="Piso y depto (opcional)">
                       <input id="pisoDepto" autoComplete="address-line2" value={d.pisoDepto} onInput={(e) => cambiar({ pisoDepto: (e.target as HTMLInputElement).value })} class="campo" />
                     </Campo>
-                    <Campo id="localidad" etiqueta="Localidad" error={mostrar(2, 'localidad', e2)}>
-                      <input {...propiedades('localidad', mostrar(2, 'localidad', e2))} autoComplete="address-level2" value={d.localidad} onInput={(e) => cambiar({ localidad: (e.target as HTMLInputElement).value })} class="campo" />
-                    </Campo>
                   </>
                 )}
                 {modalidad === 'sucursal' && (
                   <>
                     <div class="sm:col-span-2">
-                      <Campo id="sucursal" etiqueta="Sucursal del correo" error={mostrar(2, 'sucursal', e2)} ayuda="Escribí el nombre o la dirección de la sucursal donde querés retirar.">
+                      <Campo id="sucursal" etiqueta="Sucursal del correo" error={mostrar(2, 'sucursal', e2)}>
                         <input {...propiedades('sucursal', mostrar(2, 'sucursal', e2))} value={d.sucursal} onInput={(e) => cambiar({ sucursal: (e.target as HTMLInputElement).value })} class="campo" />
                       </Campo>
                     </div>
@@ -440,16 +507,6 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
                       <input id="localidad" autoComplete="address-level2" value={d.localidad} onInput={(e) => cambiar({ localidad: (e.target as HTMLInputElement).value })} class="campo" />
                     </Campo>
                   </>
-                )}
-                {modalidad !== 'retiro' && (
-                  <Campo id="provincia" etiqueta="Provincia" error={mostrar(2, 'provincia', e2)}>
-                    <select {...propiedades('provincia', mostrar(2, 'provincia', e2))} autoComplete="address-level1" value={d.provincia} onChange={(e) => cambiar({ provincia: (e.target as HTMLSelectElement).value })} class="campo pr-10">
-                      <option value="">Elegí una provincia</option>
-                      {PROVINCIAS.map((p) => (
-                        <option value={p}>{p}</option>
-                      ))}
-                    </select>
-                  </Campo>
                 )}
                 {modalidad === 'domicilio' && (
                   <div class="sm:col-span-2">
@@ -504,7 +561,6 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
                 <CreditCard class="text-suave size-5 shrink-0" aria-hidden="true" />
                 <span class="min-w-0 flex-1 text-sm">
                   <span class="block font-medium">Mercado Pago</span>
-                  <span class="text-suave block text-xs">Tarjetas de crédito y débito, dinero en cuenta y efectivo</span>
                   {tienda.cuotasSinInteres && <span class="text-exito block text-xs font-medium">Hasta {tienda.cuotasSinInteres.cantidad} cuotas sin interés</span>}
                 </span>
               </label>
@@ -513,12 +569,14 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
                 <Landmark class="text-suave size-5 shrink-0" aria-hidden="true" />
                 <span class="min-w-0 flex-1 text-sm">
                   <span class="block font-medium">Transferencia bancaria</span>
-                  <span class="text-suave block text-xs">Te damos el alias al finalizar la compra</span>
                 </span>
                 {tienda.descuentoTransferenciaPorcentaje > 0 && <span class="insignia bg-exito text-white">{tienda.descuentoTransferenciaPorcentaje}% OFF</span>}
               </label>
             </div>
           </fieldset>
+          <Campo id="nota" etiqueta="Nota para la tienda (opcional)">
+            <textarea id="nota" rows={2} maxLength={300} value={d.nota} onInput={(e) => cambiar({ nota: (e.target as HTMLTextAreaElement).value })} class="campo" placeholder="Por ejemplo: es para regalo" />
+          </Campo>
           <p class="text-suave text-sm">
             Reservamos tus prendas {tienda.reservaMercadoPagoMinutos} minutos con Mercado Pago y {tienda.reservaTransferenciaHoras} horas con transferencia. Si no recibimos el pago a tiempo, el pedido se cancela solo.
           </p>
@@ -527,9 +585,13 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
             <label class="flex cursor-pointer items-start gap-3 text-sm">
               <input {...propiedades('acepta', mostrar(3, 'acepta', e3))} type="checkbox" checked={d.acepta} onChange={(e) => cambiar({ acepta: (e.target as HTMLInputElement).checked })} class="mt-0.5 size-5 shrink-0 rounded" />
               <span>
-                Acepto los términos y la{' '}
-                <a href="/cambios-y-devoluciones" target="_blank" rel="noopener" class="underline underline-offset-4">
-                  política de cambios y devoluciones
+                Acepto los{' '}
+                <a href="/terminos" target="_blank" rel="noopener" class="underline underline-offset-4">
+                  términos y condiciones
+                </a>{' '}
+                y la{' '}
+                <a href="/privacidad" target="_blank" rel="noopener" class="underline underline-offset-4">
+                  política de privacidad
                 </a>
               </span>
             </label>
@@ -562,15 +624,12 @@ export default function Checkout({ tienda }: { tienda: DatosTienda }) {
           </button>
         </Paso>
 
-        <a href="/carrito" class="text-suave inline-block text-sm underline underline-offset-4 hover:no-underline">
-          ← Volver al carrito
-        </a>
       </div>
 
       {/* Resumen fijo (escritorio) */}
       <aside class="hidden lg:block" aria-label="Resumen de la compra">
-        <div class="bg-gris rounded-tienda sticky top-6 p-5">
-          <h2 class="mb-4 text-lg font-semibold">Resumen</h2>
+        <div class="bg-gris border-linea rounded-tienda sticky top-6 border p-8">
+          <h2 class="mb-5 font-sans text-xs font-medium tracking-[0.24em] uppercase">Tu pedido</h2>
           <Resumen idBase="escritorio" {...resumenProps} />
         </div>
       </aside>

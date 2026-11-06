@@ -9,11 +9,14 @@ type Opcion = { valor: string; texto: string };
 const normal = (texto: string) => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 let serie = 0;
 
-function mejorar(select: HTMLSelectElement) {
+// Una opción deshabilitada no se ofrece en la lista: sirve de "vacío" en los selectores que agregan a una lista (materiales).
+export function mejorar(select: HTMLSelectElement) {
+  if (select.dataset.mejorado) return;
+  select.dataset.mejorado = '1';
   const id = `combo-${serie++}`;
   const crearEn = select.dataset.crear;
   const libre = 'libre' in select.dataset;
-  const opciones = (): Opcion[] => [...select.options].map((o) => ({ valor: o.value, texto: o.text }));
+  const opciones = (): Opcion[] => [...select.options].filter((o) => !o.disabled).map((o) => ({ valor: o.value, texto: o.text }));
 
   const caja = document.createElement('div');
   caja.className = 'relative';
@@ -25,7 +28,7 @@ function mejorar(select: HTMLSelectElement) {
   entrada.setAttribute('aria-autocomplete', 'list');
   entrada.setAttribute('aria-expanded', 'false');
   entrada.setAttribute('aria-controls', id);
-  entrada.placeholder = 'Buscar…';
+  entrada.placeholder = select.dataset.placeholder ?? 'Buscar…';
   const lista = document.createElement('ul');
   lista.id = id;
   lista.setAttribute('role', 'listbox');

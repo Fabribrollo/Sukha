@@ -1,16 +1,18 @@
 ---
-import { ImageOff, Pencil, Plus, Search, Shirt, Trash2 } from '@lucide/astro';
-import Campo from '../../../components/panel/Campo.astro';
+import { ImageOff, Pencil, Plus, Download, Rows3, Search, Shirt, Trash2, X } from '@lucide/astro';
+import Cantidad from '../../../components/panel/Cantidad.astro';
+import DatosProducto from '../../../components/panel/DatosProducto.astro';
 import Insignia from '../../../components/panel/Insignia.astro';
 import Tarjeta from '../../../components/panel/Tarjeta.astro';
 import Vacio from '../../../components/panel/Vacio.astro';
 import Panel from '../../../layouts/Panel.astro';
 import { api, leer } from '../../../lib/api';
-import { ESTADOS_PRODUCTO, categoriasParaElegir, centavos, errorDe, entero, foto, pesos, txt } from '../../../lib/panel';
+import { ESTADOS_PRODUCTO, centavos, errorDe, entero, foto, marcado, pesos, txt } from '../../../lib/panel';
 
 export const prerender = false;
 
 let error = '';
+let altaFallida = false;
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   if (f.get('accion') === 'borrar') {
@@ -20,9 +22,23 @@ if (Astro.request.method === 'POST') {
     error = await errorDe(r);
   } else {
     const precio = centavos(f, 'precio');
-    if (!precio) error = 'Escribí el precio en pesos, por ejemplo 18500 o 18.500,50.';
+    const oferta = centavos(f, 'oferta');
+    altaFallida = true;
+    if (!precio || Number.isNaN(oferta)) error = 'Revisá los precios: van en pesos, por ejemplo 18500 o 18.500,50.';
     else {
-      const r = await api(Astro.request, '/api/admin/productos', { nombre: txt(f, 'nombre'), categoriaId: entero(f, 'categoriaId'), precioCentavos: precio });
+      const r = await api(Astro.request, '/api/admin/productos', {
+        nombre: txt(f, 'nombre'),
+        categoriaId: entero(f, 'categoriaId'),
+        descripcion: txt(f, 'descripcion'),
+        materialIds: f.getAll('material').map(Number),
+        marcaId: entero(f, 'marcaId') ?? null,
+        cuidados: txt(f, 'cuidados'),
+        precioCentavos: precio,
+        precioOfertaCentavos: oferta,
+        pesoGramos: entero(f, 'pesoGramos'),
+        destacado: marcado(f, 'destacado'),
+        coleccionIds: f.getAll('coleccion').map(Number),
+      });
       // El producto nace como borrador: se sigue en su página para cargarle variantes y fotos.
       if (r.ok) return Astro.redirect(`/admin/productos/${((await r.json()) as any).id}?ok`, 303);
       error = await errorDe(r);
@@ -32,48 +48,52 @@ if (Astro.request.method === 'POST') {
 
 const estado = Astro.url.searchParams.get('estado') ?? '';
 const q = Astro.url.searchParams.get('q') ?? '';
-const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }) });
-const [productos, categorias] = await Promise.all([
+const marca = Astro.url.searchParams.get('marca') ?? '';
+const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...(marca && { marca }) });
+const [conteos, productos, categorias, opciones, colecciones, sugeridos] = await Promise.all([
+  leer<Record<string, number>>(Astro.request, '/api/admin/productos/conteos'),
   leer<any[]>(Astro.request, `/api/admin/productos?${consulta}`),
   leer<any[]>(Astro.request, '/api/admin/categorias'),
+  leer<{ marcas: { id: number; nombre: string }[]; materiales: any[] }>(Astro.request, '/api/admin/opciones'),
+  leer<any[]>(Astro.request, '/api/admin/colecciones'),
+  leer<{ cuidados: string[] }>(Astro.request, '/api/admin/productos/sugerencias'),
 ]);
+const { marcas } = opciones;
 const color: Record<string, any> = { publicado: 'verde', borrador: 'ambar', oculto: 'gris' };
 const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
 ---
 
 <Panel titulo="Productos" error={error} aviso={Astro.url.searchParams.has('oculto') ? 'Ese producto ya tuvo ventas, así que no se puede borrar: quedó oculto de la tienda.' : undefined}>
-	<details slot="acciones" class="relative" open={!!error}>
-		<summary class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</summary>
-		<div class="shadow-theme-lg absolute right-0 z-10 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-4">
-			<form method="post" class="space-y-3">
-				<Campo etiqueta="Nombre" nombre="nombre" required maxlength="120" />
-				<Campo etiqueta="Categoría" nombre="categoriaId" tipo="select" required data-combo data-crear="/api/admin/categorias">
-					{categoriasParaElegir(categorias).map((c) => <option value={c.id}>{c.etiqueta}</option>)}
-				</Campo>
-				<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" required />
-				<button class="btn btn-primario w-full"><Plus class="size-4" aria-hidden="true" />Crear borrador</button>
-			</form>
-		</div>
-	</details>
+	<a slot="acciones" href="/api/admin/productos/exportar" download class="btn btn-secundario"><Download class="size-4" aria-hidden="true" />Exportar stock</a>
+	<a slot="acciones" href="/admin/productos/carga-rapida" class="btn btn-secundario"><Rows3 class="size-4" aria-hidden="true" />Carga rápida</a>
+	<button slot="acciones" type="button" data-alta="alta-producto" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</button>
 
 	<div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 		<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Filtrar por estado">
-			<a href="/admin/productos" aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todos</a>
+			<a href="/admin/productos" aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todos<Cantidad n={Object.values(conteos).reduce((a, b) => a + b, 0)} /></a>
 			{Object.entries(ESTADOS_PRODUCTO).map(([valor, nombre]) => (
-				<a href={`/admin/productos?estado=${valor}`} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}</a>
+				<a href={`/admin/productos?estado=${valor}`} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}<Cantidad n={conteos[valor]} /></a>
 			))}
 		</nav>
-		<form method="get" class="relative lg:w-72" role="search">
+		<form method="get" data-filtros class="flex flex-col gap-2 sm:flex-row lg:w-auto" role="search">
 			{estado && <input type="hidden" name="estado" value={estado} />}
-			<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-			<input type="search" name="q" value={q} placeholder="Buscar producto" aria-label="Buscar producto" class="campo pl-10" />
+			{marcas.length > 0 && (
+				<select name="marca" aria-label="Filtrar por marca o distribuidor" class="campo sm:w-52">
+					<option value="">Todas las marcas</option>
+					{marcas.map((m) => <option value={m.id} selected={String(m.id) === marca}>{m.nombre}</option>)}
+				</select>
+			)}
+			<span class="relative sm:w-72">
+				<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+				<input type="search" name="q" value={q} placeholder="Buscar producto" aria-label="Buscar producto" class="campo pl-10" />
+			</span>
 		</form>
 	</div>
 
 	<Tarjeta alRas>
 		{productos.length === 0 ? <Vacio texto="No hay productos con este filtro"><Shirt aria-hidden="true" /></Vacio> : (
 			<div class="overflow-x-auto">
-				<table class="min-w-full">
+				<table class="tabla-tarjetas min-w-full">
 					<thead class="border-b border-gray-100"><tr><th class="th">Producto</th><th class="th">Estado</th><th class="th num">Precio</th><th class="th num">Stock</th><th class="th"><span class="sr-only">Acciones</span></th></tr></thead>
 					<tbody class="divide-y divide-gray-100">
 						{productos.map((p) => (
@@ -83,7 +103,7 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 										{p.foto
 											? <img class="size-12 shrink-0 rounded-lg object-cover" src={foto(p.foto)} alt="" loading="lazy" />
 											: <span class="flex size-12 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400"><ImageOff class="size-5" aria-label="Sin foto" /></span>}
-										<span><span class="hover:text-brand-500 font-medium text-gray-800">{p.nombre}</span><br /><span class="text-theme-xs text-gray-500">{p.categoria}</span></span>
+										<span><span class="hover:text-brand-500 font-medium text-gray-800">{p.nombre}</span><br /><span class="text-theme-xs text-gray-500">{[p.categoria, p.marca].filter(Boolean).join(' · ')}</span></span>
 									</a>
 								</td>
 								<td class="td"><Insignia color={color[p.estado]}>{ESTADOS_PRODUCTO[p.estado]}</Insignia></td>
@@ -113,6 +133,27 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 			</div>
 		)}
 	</Tarjeta>
+
+	<dialog id="alta-producto" data-abrir={altaFallida ? '' : undefined} class="m-auto max-h-[92vh] w-[calc(100%-1.5rem)] max-w-3xl overflow-y-auto rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="alta-producto-titulo">
+		<form method="post" class="space-y-5 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="alta-producto-titulo" class="text-base font-medium text-gray-800">Nuevo producto</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<DatosProducto categorias={categorias} colecciones={colecciones} opciones={opciones} cuidados={sugeridos.cuidados} />
+			<div class="flex items-center justify-between gap-3">
+				<p class="text-theme-xs text-gray-500">Nace como borrador: después cargás talles, colores y fotos.</p>
+				<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Crear borrador</button>
+			</div>
+		</form>
+	</dialog>
 </Panel>
 
 <script src="../../../scripts/combo.ts"></script>
+<script src="../../../scripts/materiales.ts"></script>
+<script src="../../../scripts/alta.ts"></script>
+<script>
+	// Cambiar la marca filtra al instante.
+	const filtros = document.querySelector<HTMLFormElement>('[data-filtros]');
+	filtros?.addEventListener('change', (e) => (e.target as HTMLElement).tagName === 'SELECT' && filtros.requestSubmit());
+</script>

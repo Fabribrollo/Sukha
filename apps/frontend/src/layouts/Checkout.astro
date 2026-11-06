@@ -3,11 +3,13 @@
 import '../styles/tienda.css';
 import { Lock } from '@lucide/astro';
 import Logo from '../components/tienda/Logo.astro';
+import { datosDeLaTienda } from '../lib/tienda';
 
 interface Props {
   titulo: string;
 }
 const { titulo } = Astro.props;
+const { tienda } = await datosDeLaTienda(Astro.request);
 ---
 
 <!doctype html>
@@ -15,19 +17,24 @@ const { titulo } = Astro.props;
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>{titulo} | Sukhä</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Figtree:wght@300..700&display=swap" />
+		<title>{titulo} | {tienda.titulo}</title>
 		<meta name="robots" content="noindex" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href={tienda.favicon ?? "/favicon.svg"} />
 	</head>
 	<body class="flex min-h-screen flex-col">
 		<header class="border-linea border-b">
-			<div class="contenedor flex h-16 items-center justify-between">
-				<Logo />
-				<p class="text-suave flex items-center gap-2 text-sm"><Lock class="size-4" aria-hidden="true" />Compra 100% segura</p>
+			<div class="mx-auto grid h-16 w-full max-w-[1200px] grid-cols-[1fr_auto_1fr] items-center px-4 md:h-[84px] md:px-10">
+				<a href="/carrito" class="text-suave text-sm hover:underline">← <span class="max-sm:sr-only">Volver al carrito</span></a>
+				<Logo logo={tienda.logo} />
+				<p class="text-suave flex items-center justify-end gap-2 text-sm max-md:sr-only"><Lock class="size-4" aria-hidden="true" />Compra segura</p>
 			</div>
 		</header>
-		<main class="contenedor flex-1 py-6 md:py-10">
-			<h1 class="mb-6 text-2xl font-semibold md:text-3xl">Finalizar compra</h1>
+		{tienda.vacaciones && <div class="bg-texto text-fondo px-4 py-[11px] text-center text-xs" role="status">Estamos de vacaciones: no tomamos pedidos por ahora. {tienda.vacaciones.mensaje}</div>}
+		<main class="mx-auto w-full max-w-[1200px] flex-1 px-4 py-8 md:px-10 md:py-14">
+			<h1 class="mb-8 text-[34px] leading-tight md:mb-10 md:text-[44px]">Finalizar compra</h1>
 			<slot />
 		</main>
 		<footer class="border-linea text-suave border-t py-6 text-center text-xs">

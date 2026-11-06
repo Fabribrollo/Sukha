@@ -22,3 +22,10 @@ AGENTS.md
 
 .DS_Store
 apps/frontend/public/_demo-datos.js
+prueba-fondo/
+quitafondos-local/
+mangusco-scrape/
+mangusco-export/
+.cache/
+quitafondos-local/.cache/
+mangusco-export/sin-fondo/

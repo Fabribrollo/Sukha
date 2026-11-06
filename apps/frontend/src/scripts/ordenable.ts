@@ -33,23 +33,23 @@ export function ordenable(lista: HTMLElement, { asa, guardar }: Opciones) {
   });
 
   // Teclado: flechas sobre el botón de arrastre de cada elemento (solo los de esta lista, no los de listas anidadas).
+  // Escucha la lista entera, así también responden los elementos que se agregan después (preguntas frecuentes).
   let pendiente: ReturnType<typeof setTimeout> | undefined;
-  for (const boton of lista.querySelectorAll<HTMLElement>(asa)) {
-    const item = boton.closest<HTMLElement>('[data-id]')!;
-    if (item.parentElement !== lista) continue;
-    boton.addEventListener('keydown', (e) => {
-      const atras = e.key === 'ArrowUp' || e.key === 'ArrowLeft';
-      const adelante = e.key === 'ArrowDown' || e.key === 'ArrowRight';
-      if (!atras && !adelante) return;
-      e.preventDefault();
-      const otro = atras ? item.previousElementSibling : item.nextElementSibling;
-      if (!otro) return;
-      const antes = ids();
-      if (atras) lista.insertBefore(item, otro);
-      else lista.insertBefore(otro, item);
-      boton.focus();
-      clearTimeout(pendiente);
-      pendiente = setTimeout(() => ids().join() !== antes.join() && void guardar(ids().map(Number)), 600);
-    });
-  }
+  lista.addEventListener('keydown', (e) => {
+    const boton = (e.target as Element).closest<HTMLElement>(asa);
+    const item = boton?.closest<HTMLElement>('[data-id]');
+    if (!boton || item?.parentElement !== lista) return;
+    const atras = e.key === 'ArrowUp' || e.key === 'ArrowLeft';
+    const adelante = e.key === 'ArrowDown' || e.key === 'ArrowRight';
+    if (!atras && !adelante) return;
+    e.preventDefault();
+    const otro = atras ? item.previousElementSibling : item.nextElementSibling;
+    if (!otro) return;
+    const antes = ids();
+    if (atras) lista.insertBefore(item, otro);
+    else lista.insertBefore(otro, item);
+    boton.focus();
+    clearTimeout(pendiente);
+    pendiente = setTimeout(() => ids().join() !== antes.join() && void guardar(ids().map(Number)), 600);
+  });
 }

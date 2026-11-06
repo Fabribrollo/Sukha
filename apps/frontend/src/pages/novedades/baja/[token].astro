@@ -20,13 +20,13 @@ if (Astro.request.method === 'POST') {
 			estado === 'listo' ? (
 				<>
 					<CircleCheck class="text-exito mx-auto mb-3 size-10" aria-hidden="true" />
-					<h1 class="text-2xl font-semibold">Te diste de baja</h1>
+					<h1 class="text-2xl">Te diste de baja</h1>
 					<p class="text-suave mt-2">No vas a recibir más novedades.</p>
 					<a href="/" class="boton boton-secundario mt-6">Volver a la tienda</a>
 				</>
 			) : (
 				<>
-					<h1 class="text-2xl font-semibold">¿Querés dejar de recibir novedades?</h1>
+					<h1 class="text-2xl">¿Querés dejar de recibir novedades?</h1>
 					<p class="text-suave mt-2">Dejamos de enviarte emails con lanzamientos y ofertas. Los avisos de tus compras te siguen llegando.</p>
 					{estado === 'error' && <p class="text-oferta mt-4 text-sm" role="alert">No pudimos darte de baja. Puede que el link haya vencido: escribinos y lo resolvemos.</p>}
 					<form method="post" class="mt-6">

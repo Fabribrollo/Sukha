@@ -84,3 +84,25 @@ test('cupón del 100% más transferencia no deja descuento negativo ni total neg
   expect(t.totalCentavos).toBe(800_000);
   cumpleReglasDeLaBase(t);
 });
+
+test('2x1: de cada dos prendas de la promoción sale gratis la más barata, y el cupón cuenta sobre lo que queda', () => {
+  const combo = { id: 1, cada: 2 as const, nombre: '2x1 Verano' };
+  const lineas = [
+    { precioCentavos: 100_000, cantidad: 1, combo },
+    { precioCentavos: 60_000, cantidad: 2, combo },
+    { precioCentavos: 50_000, cantidad: 1 }, // fuera de la promoción
+  ];
+  // 3 prendas en la promoción: sale gratis 1 (la más barata, 600).
+  const t = calcularTotales({ ...base, lineas, cupon: null, porcentajeTransferencia: 0 });
+  expect(t.descuentos).toEqual([{ tipo: 'promo', cuponId: null, descripcion: 'Promo 2x1 Verano', montoCentavos: 60_000 }]);
+  expect(t.subtotalCentavos).toBe(270_000);
+  const conCupon = calcularTotales({ ...base, lineas, cupon: cupon({ valor: 10 }), porcentajeTransferencia: 0 });
+  expect(conCupon.descuentoCentavos).toBe(60_000 + 21_000); // 10% de 2.100
+  cumpleReglasDeLaBase(t);
+});
+
+test('3x2: con 5 prendas sale gratis 1; con 6, 2', () => {
+  const combo = { id: 2, cada: 3 as const, nombre: '3x2' };
+  const con = (n: number) => calcularTotales({ ...base, lineas: [{ precioCentavos: 100_000, cantidad: n, combo }], cupon: null, porcentajeTransferencia: 0 }).descuentoCentavos;
+  expect([con(2), con(5), con(6)]).toEqual([0, 100_000, 200_000]);
+});

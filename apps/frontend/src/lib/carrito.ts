@@ -91,7 +91,7 @@ export type Validacion = {
   descuentoCentavos: number;
   envioCentavos: number;
   totalCentavos: number;
-  descuentos: { tipo: 'cupon' | 'transferencia'; descripcion: string; montoCentavos: number }[];
+  descuentos: { tipo: 'cupon' | 'transferencia' | 'promo'; descripcion: string; montoCentavos: number }[];
   cuponRechazado: string | null;
   envio: OpcionEnvio | null;
 };

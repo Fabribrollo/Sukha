@@ -1,0 +1,56 @@
+---
+// Sección de categorías de la portada: grilla (o fila deslizable en el celular) con la foto de cada categoría si se pidió
+// mostrar fotos; si ninguna tiene foto, una lista de nombres grandes.
+import { ArrowRight } from '@lucide/astro';
+
+interface Props {
+  id: string;
+  titulo: string;
+  columnas: 2 | 3 | 4 | 6;
+  conFoto: boolean;
+  items: { nombre: string; slug: string; imagen: string | null }[];
+  // Enlace «Ver todo →» a la derecha del título.
+  verTodos?: boolean;
+}
+const { id, titulo, columnas, conFoto, items, verTodos = false } = Astro.props;
+// Sin ninguna foto, cajas beige vacías parecen fotos que no cargaron.
+const conFotos = conFoto && items.some((c) => c.imagen);
+// Clases completas (Tailwind no ve las armadas por partes).
+const grilla = { 2: 'md:grid-cols-2', 3: 'md:grid-cols-3', 4: 'md:grid-cols-4', 6: 'md:grid-cols-6' }[columnas];
+---
+
+<section class="contenedor mt-16 md:mt-[120px]" aria-labelledby={`sec-${id}`}>
+	{titulo && (
+		<div class="mb-6 flex items-baseline justify-between gap-4 md:mb-10">
+			<h2 id={`sec-${id}`} class="text-[32px] leading-none md:text-[44px]">{titulo}</h2>
+			{verTodos && <a href="/productos" class="border-texto inline-flex border-b pb-0.5 text-[15px]">Ver todo</a>}
+		</div>
+	)}
+	{
+		conFotos ? (
+			<ul class={`fila-deslizable md:grid md:overflow-visible ${grilla}`}>
+				{items.map((c) => (
+					<li class="w-[60%] shrink-0 snap-start sm:w-[36%] md:w-auto">
+						<a href={`/categoria/${c.slug}`} class="group block">
+							<span class="rounded-tienda bg-arena block aspect-[3/4] overflow-hidden">
+								{c.imagen && <img src={`/api/imagenes/${c.imagen}/mediano.webp`} alt="" loading="lazy" class="size-full object-cover transition duration-300 group-hover:scale-105" />}
+							</span>
+							<span class="mt-2.5 block font-serif text-[26px] leading-none">{c.nombre}</span>
+						</a>
+					</li>
+				))}
+			</ul>
+		) : (
+			<ul class="border-linea divide-linea divide-y border-y md:grid md:grid-cols-2 md:gap-x-12 md:divide-y-0 md:border-y-0">
+				{items.map((c) => (
+					<li class="md:border-linea md:border-b">
+						<a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center justify-between gap-4 py-5 font-serif text-2xl hover:opacity-70 md:text-4xl">
+							{c.nombre}
+							<ArrowRight class="size-5 shrink-0" aria-hidden="true" />
+						</a>
+					</li>
+				))}
+			</ul>
+		)
+	}
+</section>

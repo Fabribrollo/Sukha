@@ -1,0 +1,42 @@
+---
+// Buscadores y redes de una categoría o colección: dirección, título y descripción, con la vista previa de Google y WhatsApp.
+import { Save, Search } from '@lucide/astro';
+import SeoCampos from '../../../../components/panel/SeoCampos.astro';
+import Tarjeta from '../../../../components/panel/Tarjeta.astro';
+import Panel from '../../../../layouts/Panel.astro';
+import { api, leer } from '../../../../lib/api';
+import { errorDe, txt } from '../../../../lib/panel';
+
+export const prerender = false;
+
+const tipo = Astro.params.tipo;
+if (tipo !== 'categoria' && tipo !== 'coleccion') return Astro.redirect('/admin');
+const id = Number(Astro.params.id);
+const plural = tipo === 'categoria' ? 'categorias' : 'colecciones';
+const volver = { href: `/admin/${plural}`, texto: tipo === 'categoria' ? 'Categorías' : 'Colecciones' };
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r = await api(Astro.request, `/api/admin/${plural}/${id}`, { slug: txt(f, 'slug') ?? undefined, seoTitulo: txt(f, 'seoTitulo'), seoDescripcion: txt(f, 'seoDescripcion') }, 'PATCH');
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  error = await errorDe(r);
+}
+
+const lista = await leer<any[]>(Astro.request, `/api/admin/${plural}`);
+const item = lista.find((x) => x.id === id);
+if (!item) return Astro.redirect(volver.href);
+const padre = tipo === 'categoria' && item.padreId ? lista.find((x) => x.id === item.padreId) : null;
+const tituloAuto = padre ? `${item.nombre} · ${padre.nombre}` : item.nombre;
+const descripcionAuto = tipo === 'categoria' ? `${item.nombre} de Sukhä. Envíos a todo el país.` : `Colección ${item.nombre} de Sukhä.`;
+---
+
+<Panel titulo={item.nombre} error={error} volver={volver}>
+	<Tarjeta titulo="Buscadores y redes">
+		<Search slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+		<form method="post" class="space-y-5">
+			<SeoCampos ruta={tipo} slug={item.slug} titulo={item.seoTitulo} descripcion={item.seoDescripcion} tituloAuto={tituloAuto} descripcionAuto={descripcionAuto} imagenFija={item.claveImagen ?? null} />
+			<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+		</form>
+	</Tarjeta>
+</Panel>

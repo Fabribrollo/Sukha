@@ -27,10 +27,10 @@ export default function Dialogo({ abierto, alCerrar, titulo, ancho = false, chil
       onClose={alCerrar}
       onClick={(e) => e.target === ref.current && alCerrar()}
       aria-label={titulo}
-      class={`rounded-tienda m-auto max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto p-0 backdrop:bg-black/60 ${ancho ? 'max-w-3xl' : 'max-w-lg'}`}
+      class={`rounded-tienda bg-fondo m-auto max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto p-0 backdrop:bg-black/60 ${ancho ? 'max-w-3xl' : 'max-w-lg'}`}
     >
-      <div class="border-linea sticky top-0 flex items-center justify-between border-b bg-white px-5 py-3">
-        <h2 class="text-base font-semibold">{titulo}</h2>
+      <div class="border-linea sticky top-0 flex items-center justify-between border-b bg-fondo px-5 py-3">
+        <h2 class="text-base">{titulo}</h2>
         <button type="button" onClick={alCerrar} class="boton-icono" title="Cerrar" aria-label="Cerrar">
           <X class="size-5" aria-hidden="true" />
         </button>

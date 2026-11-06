@@ -1,5 +1,6 @@
 ---
 import { ArrowLeftRight, ExternalLink, PackageX, Save, Undo2 } from '@lucide/astro';
+import Cantidad from '../../components/panel/Cantidad.astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
 import Tarjeta from '../../components/panel/Tarjeta.astro';
@@ -22,13 +23,23 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const solicitudes = await leer<any[]>(Astro.request, '/api/admin/solicitudes');
+const todas = await leer<any[]>(Astro.request, '/api/admin/solicitudes');
+// Pestañas por estado: arranca en las abiertas, que son las que hay que atender.
+const filtro = Astro.url.searchParams.get('estado') ?? 'abierta';
+const solicitudes = filtro === 'todas' ? todas : todas.filter((s) => s.estado === filtro);
+const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
 const TIPOS: Record<string, [string, any]> = { arrepentimiento: ['Arrepentimiento', Undo2], cambio: ['Cambio', ArrowLeftRight], devolucion: ['Devolución', PackageX] };
 const ESTADOS: Record<string, [string, any]> = { abierta: ['Abierta', 'ambar'], aprobada: ['Aprobada', 'azul'], rechazada: ['Rechazada', 'rojo'], resuelta: ['Resuelta', 'verde'] };
 ---
 
 <Panel titulo="Post-venta" error={error}>
-	{solicitudes.length === 0 && <Tarjeta alRas><Vacio texto="No hay pedidos de cambio ni devolución"><Undo2 aria-hidden="true" /></Vacio></Tarjeta>}
+	<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-fit" aria-label="Filtrar por estado">
+		{[...Object.entries(ESTADOS).map(([v, [n]]) => [v, n, todas.filter((s) => s.estado === v).length] as const), ['todas', 'Todas', todas.length] as const].map(([valor, texto, n]) => (
+			<a href={`?estado=${valor}`} aria-current={filtro === valor ? 'page' : undefined} class:list={pestana(filtro === valor)}>{texto}<Cantidad n={n} /></a>
+		))}
+	</nav>
+
+	{solicitudes.length === 0 && <Tarjeta alRas><Vacio texto="No hay pedidos de cambio ni devolución acá"><Undo2 aria-hidden="true" /></Vacio></Tarjeta>}
 
 	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
 		{solicitudes.map((s) => {

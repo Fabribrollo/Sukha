@@ -1,0 +1,121 @@
+---
+// Venta por WhatsApp o Instagram cargada a mano. El pedido reserva el stock como uno de la tienda y la clienta paga desde
+// la página del pedido (el detalle muestra el link para copiar o mandar por WhatsApp). El formulario lo envía venta-manual.ts.
+import { Banknote, Hand, CircleCheck, CreditCard, ImageOff, Landmark, MessageCircle, Minus, Plus, Search, Shirt, Store, Truck, User, Wallet, X } from '@lucide/astro';
+import Campo from '../../../components/panel/Campo.astro';
+import Tarjeta from '../../../components/panel/Tarjeta.astro';
+import IconoInstagram from '../../../components/tienda/IconoInstagram.astro';
+import Panel from '../../../layouts/Panel.astro';
+import { leer } from '../../../lib/api';
+import { foto } from '../../../lib/panel';
+
+export const prerender = false;
+
+const [prendas, config] = await Promise.all([leer<any[]>(Astro.request, '/api/admin/pedidos/prendas'), leer<any>(Astro.request, '/api/admin/configuracion')]);
+const datos = { prendas: prendas.map((p) => ({ ...p, foto: foto(p.foto) })), transferencia: config.descuento_transferencia_porcentaje ?? 0 };
+// Un botón de opción con forma de pastilla: el radio va adentro, oculto, y el borde marca la elegida.
+const pastilla = 'has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-600 has-[:focus-visible]:ring-brand-500/30 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 px-2 py-2.5 text-center text-sm font-medium whitespace-nowrap sm:flex-row sm:gap-2 text-gray-700 has-[:focus-visible]:ring-3';
+---
+
+<Panel titulo="Nuevo pedido" volver={{ href: '/admin/pedidos', texto: 'Ventas' }}>
+	<form id="venta-manual" class="space-y-5 pb-28" novalidate data-datos={JSON.stringify(datos)}>
+		<input type="hidden" name="claveIdempotencia" value={crypto.randomUUID()} />
+
+		<fieldset class="grid grid-cols-3 gap-2" aria-label="Canal">
+			<label class={pastilla}><input type="radio" name="canal" value="whatsapp" checked class="sr-only" /><MessageCircle class="size-4" aria-hidden="true" />WhatsApp</label>
+			<label class={pastilla}><input type="radio" name="canal" value="instagram" class="sr-only" /><IconoInstagram class="size-4" />Instagram</label>
+			<label class={pastilla}><input type="radio" name="canal" value="otro" class="sr-only" /><Hand class="size-4" aria-hidden="true" />Otro</label>
+		</fieldset>
+
+		<Tarjeta titulo="Prendas">
+			<Shirt slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<div class="relative">
+				<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+				<input type="search" data-buscar placeholder="Buscar por nombre, talle, color o SKU" aria-label="Buscar prenda" class="campo pl-10" autocomplete="off" />
+			</div>
+			<ul data-resultados class="mt-2 divide-y divide-gray-100 rounded-xl border border-gray-200" hidden></ul>
+			<p data-sin-resultados class="text-theme-sm mt-2 text-gray-500" hidden>No hay prendas con stock que coincidan.</p>
+			<ul data-elegidas class="mt-4 divide-y divide-gray-100"></ul>
+			<p data-vacio class="text-theme-sm mt-4 text-gray-500">Buscá y tocá una prenda para sumarla.</p>
+			<template data-fila>
+				<li class="flex items-center gap-3 py-3">
+					<span class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-400"><img alt="" class="size-full object-cover" /><ImageOff class="size-5" aria-hidden="true" /></span>
+					<span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-800" data-nombre></span><span class="text-theme-xs block text-gray-500" data-detalle></span></span>
+					<span class="flex items-center gap-1" data-cantidad hidden>
+						<button type="button" class="btn-icono" data-menos aria-label="Una menos"><Minus class="size-4" aria-hidden="true" /></button>
+						<span class="w-6 text-center text-sm font-medium tabular-nums" data-numero></span>
+						<button type="button" class="btn-icono" data-mas aria-label="Una más"><Plus class="size-4" aria-hidden="true" /></button>
+						<button type="button" class="btn-icono" data-quitar aria-label="Quitar"><X class="size-4" aria-hidden="true" /></button>
+					</span>
+					<span class="text-sm font-medium text-gray-800 tabular-nums" data-precio></span>
+				</li>
+			</template>
+		</Tarjeta>
+
+		<Tarjeta titulo="Clienta">
+			<User slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<div class="grid gap-4 sm:grid-cols-3">
+				<Campo etiqueta="Nombre" nombre="nombre" required maxlength="120" autocomplete="off" />
+				<Campo etiqueta="WhatsApp o teléfono" nombre="telefono" tipo="tel" required maxlength="25" placeholder="351 555-1234" autocomplete="off" />
+				<Campo etiqueta="Email (opcional)" nombre="email" tipo="email" maxlength="120" ayuda="Con email le llegan los avisos del pedido. Sin email, le avisás vos por WhatsApp." autocomplete="off" />
+			</div>
+		</Tarjeta>
+
+		<Tarjeta titulo="Entrega">
+			<Truck slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<fieldset class="grid grid-cols-2 gap-2" aria-label="Forma de entrega">
+				<label class={pastilla}><input type="radio" name="entrega" value="retiro" checked class="sr-only" /><Store class="size-4" aria-hidden="true" />Retira</label>
+				<label class={pastilla}><input type="radio" name="entrega" value="envio" class="sr-only" /><Truck class="size-4" aria-hidden="true" />Envío</label>
+			</fieldset>
+			<div data-envio class="mt-4 space-y-4" hidden>
+				<div class="flex items-end gap-2">
+					<Campo etiqueta="Código postal" nombre="codigoPostal" class="flex-1" maxlength="8" inputmode="numeric" autocomplete="off" />
+					<button type="button" class="btn btn-secundario" data-cotizar>Ver envíos</button>
+				</div>
+				<p data-envio-mensaje class="text-theme-sm text-gray-500" hidden></p>
+				<div data-opciones class="grid gap-2"></div>
+				<div data-domicilio class="grid gap-4 sm:grid-cols-2" hidden>
+					<Campo etiqueta="Calle" nombre="calle" maxlength="120" />
+					<div class="grid grid-cols-2 gap-4">
+						<Campo etiqueta="Número" nombre="altura" maxlength="20" />
+						<Campo etiqueta="Piso / depto" nombre="pisoDepto" maxlength="40" />
+					</div>
+				</div>
+				<div data-sucursal hidden><Campo etiqueta="Sucursal del correo" nombre="sucursalCorreo" maxlength="120" /></div>
+				<div data-localidad class="grid gap-4 sm:grid-cols-3" hidden>
+					<Campo etiqueta="Localidad" nombre="localidad" maxlength="80" />
+					<Campo etiqueta="Provincia" nombre="provincia" maxlength="60" />
+					<Campo etiqueta="Costo del envío" nombre="envio" prefijo="$" inputmode="decimal" ayuda="El de la tabla. Cambialo si acordaste otro precio." />
+				</div>
+			</div>
+		</Tarjeta>
+
+		<Tarjeta titulo="Pago">
+			<Wallet slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<fieldset class="grid grid-cols-3 gap-2" aria-label="Forma de pago">
+				<label class={pastilla}><input type="radio" name="pago" value="mercadopago" checked class="sr-only" /><CreditCard class="size-4" aria-hidden="true" />Mercado Pago</label>
+				<label class={pastilla}><input type="radio" name="pago" value="transferencia" class="sr-only" /><Landmark class="size-4" aria-hidden="true" />Transferencia</label>
+				<label class={pastilla}><input type="radio" name="pago" value="pagado" class="sr-only" /><Banknote class="size-4" aria-hidden="true" />Ya pagó</label>
+			</fieldset>
+			<div class="mt-4 grid gap-4 sm:grid-cols-2">
+				<Campo etiqueta="Descuento" nombre="descuento" prefijo="$" inputmode="decimal" placeholder="0" />
+				<Campo etiqueta="Nota interna" nombre="notaInterna" maxlength="1000" placeholder="Solo la ves vos" />
+			</div>
+		</Tarjeta>
+
+		<div class="shadow-theme-lg fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white px-4 py-3 sm:px-6 lg:left-[280px]">
+			<div class="mx-auto flex max-w-6xl items-center justify-between gap-3">
+				<div>
+					<p class="text-theme-xs text-gray-500" data-resumen>Sin prendas</p>
+					<p class="text-lg font-semibold text-gray-800 tabular-nums" data-total>$ 0,00</p>
+				</div>
+				<button class="btn btn-primario" data-crear disabled><CircleCheck class="size-4" aria-hidden="true" />Crear pedido</button>
+			</div>
+			<p data-error role="alert" class="text-theme-sm text-error-600 mx-auto mt-2 max-w-6xl" hidden></p>
+		</div>
+	</form>
+</Panel>
+
+<script>
+	import '../../../scripts/venta-manual';
+</script>

@@ -1,15 +1,35 @@
 // Tipos y utilidades de la tienda pública que se pueden usar tanto en el servidor como en el navegador
 // (no importar acá nada que dependa de cloudflare:workers). Los datos vienen de la API (ver docs/API.md).
 
+import type { Filtros } from '../../../backend/src/compartido';
+
+// Los tipos de las respuestas del catálogo salen del backend (apps/backend/src/compartido.ts): si cambia la API, la
+// tienda deja de compilar en lugar de fallar en producción. Son solo tipos: no agregan nada a lo que baja el navegador.
+export type { FichaDeProducto, Filtros, FotoDeProducto, Listado, Seo, TarjetaDeProducto, VarianteDeProducto } from '../../../backend/src/compartido';
+import type { TarjetaDeProducto } from '../../../backend/src/compartido';
+
 export type Tienda = {
+  // Desde cuánto alguna zona envía gratis, para el aviso «Te faltan $X» del carrito (null = ninguna).
+  envioGratisDesdeCentavos: number | null;
   descuentoTransferenciaPorcentaje: number;
   cuotasSinInteres: { cantidad: number } | null;
   reservaMercadoPagoMinutos: number;
   reservaTransferenciaHoras: number;
   emailContacto: string;
   datosLegales: string;
+  // Datos del comercio para el pie y los textos legales (vacío = falta cargarlo en Configuración).
+  comercio: { razonSocial: string; cuit: string; condicionFiscal: string; domicilio: string; horarioAtencion: string; responsableAtencion: string; dataFiscalUrl: string; };
   retiro: { direccion: string; horario: string } | null;
+  // Dirección del logo subido desde el panel, o null para usar el nombre en texto.
+  logo: string | null;
+  // Favicon subido desde el panel (null = el de siempre) y nombre de la tienda para los títulos de página.
+  favicon: string | null;
+  titulo: string;
   barraAnuncios: string;
+  // Código de Cloudflare Web Analytics (vacío = sin estadísticas).
+  analyticsToken: string;
+  // Modo vacaciones: la tienda no toma pedidos; el mensaje es opcional.
+  vacaciones: { mensaje: string } | null;
   whatsapp: string;
   instagram: string;
   ultimasUnidadesUmbral: number;
@@ -28,50 +48,6 @@ export function buscarCategoria(categorias: Filtros['categorias'], slug: string)
   }
   return null;
 }
-
-export type Filtros = {
-  // Categorías principales con sus subcategorías (solo las visibles).
-  categorias: { nombre: string; slug: string; hijas: { nombre: string; slug: string }[] }[];
-  colecciones: { nombre: string; slug: string }[];
-  talles: { id: number; nombre: string; orden: number }[];
-  colores: { id: number; nombre: string; hex: string | null }[];
-  precio: { min: number; max: number };
-};
-
-export type TarjetaDeProducto = {
-  id: number;
-  nombre: string;
-  slug: string;
-  precioCentavos: number;
-  precioOfertaCentavos: number | null;
-  categoria: string;
-  foto: string | null;
-  disponible: number;
-};
-
-export type VarianteDeProducto = { id: number; talle: string | null; color: string | null; colorId: number | null; hex: string | null; stock: number };
-export type FotoDeProducto = { clave: string; colorId: number | null; textoAlternativo: string | null };
-export type FichaDeProducto = {
-  id: number;
-  nombre: string;
-  slug: string;
-  descripcion: string | null;
-  material: string | null;
-  cuidados: string | null;
-  precioCentavos: number;
-  precioOfertaCentavos: number | null;
-  categoria: string;
-  categoriaSlug: string;
-  // Categoría principal, si la del producto es una subcategoría.
-  categoriaPadre: { nombre: string; slug: string } | null;
-  // Texto (o, en datos viejos, un objeto) con las medidas de la categoría.
-  guiaTalles: unknown;
-  variantes: VarianteDeProducto[];
-  imagenes: FotoDeProducto[];
-  relacionados: TarjetaDeProducto[];
-};
-
-export type Listado = { productos: TarjetaDeProducto[]; total: number; pagina: number; porPagina: number };
 
 // ───────────── Montos ─────────────
 // Los montos de la API están en centavos. Sin decimales cuando el monto es redondo: "$ 18.500".
@@ -92,6 +68,20 @@ export const precioFinal = (p: { precioCentavos: number; precioOfertaCentavos: n
 export function porcentajeDescuento(p: { precioCentavos: number; precioOfertaCentavos: number | null }) {
   if (p.precioOfertaCentavos === null || p.precioOfertaCentavos >= p.precioCentavos) return null;
   return Math.round((1 - p.precioOfertaCentavos / p.precioCentavos) * 100);
+}
+
+// Etiquetas de la foto de una tarjeta: «−30%» (oferta) o, si no hay, «Últimas unidades» o «Nuevo»; y el 2x1 o 3x2 vigente.
+// Un producto agotado no lleva etiquetas. «Nuevo» dura DIAS_NUEVO días desde que se cargó.
+const DIAS_NUEVO = 14;
+export function etiquetasDe(p: TarjetaDeProducto, ultimasUnidadesUmbral: number) {
+  if (!p.disponible) return [];
+  const descuento = porcentajeDescuento(p);
+  const etiquetas: string[] = [];
+  if (descuento !== null) etiquetas.push(`−${descuento} %`);
+  else if (p.unidades > 0 && p.unidades <= ultimasUnidadesUmbral) etiquetas.push('Últimas unidades');
+  else if (Date.now() - new Date(p.creadoEn).getTime() < DIAS_NUEVO * 86_400_000) etiquetas.push('Nuevo');
+  if (p.combo) etiquetas.push(p.combo);
+  return etiquetas;
 }
 
 // Precio con el descuento por transferencia, o null si no hay descuento.
@@ -116,6 +106,9 @@ export const urlBanner = (clave: string) => `/api/imagenes/${clave}`;
 // Divide un texto cargado en el panel en párrafos (por líneas en blanco). Se muestran como texto, nunca como HTML.
 export const parrafos = (texto: unknown) =>
   typeof texto === 'string' ? texto.split(/\r?\n\s*\r?\n/).map((p) => p.trim()).filter(Boolean) : [];
+
+// Más de 10 kg no se ofrece envío desde la tienda: se consulta por WhatsApp (el retiro en persona sigue disponible).
+export const MENSAJE_PESO_EXCEDIDO = 'Hola! Mi pedido pesa más de 10 kg, ¿me cotizan el envío?';
 
 export const enlaceWhatsapp = (numero: string, mensaje?: string) =>
   `https://wa.me/${numero.replace(/\D/g, '')}${mensaje ? `?text=${encodeURIComponent(mensaje)}` : ''}`;

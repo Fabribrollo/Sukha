@@ -3,7 +3,7 @@ import { leer } from '../lib/api';
 
 export const prerender = false;
 
-const fijas = ['/', '/productos', '/ofertas', '/quienes-somos', '/preguntas-frecuentes', '/cambios-y-devoluciones', '/contacto'];
+const fijas = ['/', '/productos', '/ofertas', '/quienes-somos', '/preguntas-frecuentes', '/cambios-y-devoluciones', '/contacto', '/privacidad', '/terminos'];
 // Los slugs y las fechas vienen de nuestra base, pero igual se escapan para que un carácter raro no rompa el XML.
 const xml = (t: string) => t.replace(/[<>&'"]/g, (c) => `&#${c.charCodeAt(0)};`);
 

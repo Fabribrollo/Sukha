@@ -1,5 +1,5 @@
 ---
-import { BadgeDollarSign, CalendarClock, Pause, Pencil, Percent, Plus, Save, TicketPercent, Truck, Users } from '@lucide/astro';
+import { BadgeDollarSign, CalendarClock, Pause, Pencil, Percent, Plus, Save, TicketPercent, Truck, Users, X } from '@lucide/astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
 import Interruptor from '../../components/panel/Interruptor.astro';
@@ -12,6 +12,7 @@ import { centavos, deCampoFecha, dia, enCampo, entero, errorDe, marcado, paraCam
 export const prerender = false;
 
 let error = '';
+let altaFallida = false;
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   const id = f.get('id');
@@ -19,13 +20,17 @@ if (Astro.request.method === 'POST') {
   const tipo = String(f.get('tipo') ?? '');
   // El "valor" es un porcentaje o un monto en pesos, según el tipo.
   const valor = tipo === 'monto' ? centavos(f, 'valor') : tipo === 'porcentaje' ? entero(f, 'valor') : 0;
-  if (Number.isNaN(minimo) || (!id && (valor === null || Number.isNaN(valor)))) error = 'Revisá los números del cupón.';
+  if (Number.isNaN(minimo) || (!id && (valor === null || Number.isNaN(valor)))) {
+    error = 'Revisá los números del cupón.';
+    altaFallida = !id;
+  }
   else {
     const comunes = { minimoCentavos: minimo ?? 0, usosMaximos: entero(f, 'usosMaximos'), venceEn: deCampoFecha(txt(f, 'venceEn')) };
     const r = id
       ? await api(Astro.request, `/api/admin/cupones/${id}`, { ...comunes, activo: marcado(f, 'activo') }, 'PATCH')
       : await api(Astro.request, '/api/admin/cupones', { ...comunes, codigo: txt(f, 'codigo'), tipo, valor });
     if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+    altaFallida = !id;
     error = await errorDe(r);
   }
 }
@@ -37,6 +42,8 @@ const agotado = (c: any) => c.usosMaximos !== null && c.usos >= c.usosMaximos;
 ---
 
 <Panel titulo="Cupones" error={error}>
+	<button slot="acciones" type="button" data-alta="alta-cupon" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</button>
+
 	{cupones.length === 0 && <Tarjeta alRas><Vacio texto="Todavía no hay cupones"><TicketPercent aria-hidden="true" /></Vacio></Tarjeta>}
 
 	<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -54,38 +61,64 @@ const agotado = (c: any) => c.usosMaximos !== null && c.usos >= c.usosMaximos;
 						<li class="flex items-center gap-1.5"><Users class="size-3.5" aria-hidden="true" />{c.usos}{c.usosMaximos ? ` de ${c.usosMaximos}` : ''} usos</li>
 						{c.venceEn && <li class="flex items-center gap-1.5"><CalendarClock class="size-3.5" aria-hidden="true" />Vence {dia(c.venceEn)}</li>}
 					</ul>
-					<details class="mt-4 border-t border-gray-100 pt-3">
-						<summary class="hover:text-brand-500 text-theme-sm inline-flex items-center gap-1.5 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar</summary>
-						<form method="post" class="mt-4 space-y-4">
-							<input type="hidden" name="id" value={c.id} />
-							<Campo etiqueta="Compra mínima" nombre="minimo" prefijo="$" inputmode="decimal" valor={enCampo(c.minimoCentavos)} />
-							<Campo etiqueta="Usos máximos" nombre="usosMaximos" inputmode="numeric" valor={c.usosMaximos} placeholder="Sin tope" />
-							<Campo etiqueta="Vence" nombre="venceEn" tipo="datetime-local" valor={paraCampoFecha(c.venceEn)} />
-							<div class="flex items-center justify-between gap-3">
-								<Interruptor etiqueta="Activo" nombre="activo" marcado={c.activo === 1} />
-								<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
-							</div>
-						</form>
-					</details>
+					<button type="button" data-editar="editar-cupon" data-datos={JSON.stringify({ codigo: c.codigo, id: c.id, minimo: enCampo(c.minimoCentavos), usosMaximos: c.usosMaximos, venceEn: paraCampoFecha(c.venceEn), activo: c.activo === 1 })} class="hover:text-brand-500 text-theme-sm mt-4 inline-flex items-center gap-1.5 border-t border-gray-100 pt-3 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar</button>
 				</article>
 			);
 		})}
 	</div>
 
-	<Tarjeta titulo="Nuevo cupón">
-		<Plus slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-		<form method="post" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+	<dialog id="alta-cupon" data-abrir={altaFallida ? '' : undefined} class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="alta-cupon-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="alta-cupon-titulo" class="text-base font-medium text-gray-800">Nuevo cupón</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
 			<Campo etiqueta="Código" nombre="codigo" required maxlength="30" placeholder="HOLA10" class="[&_input]:uppercase" />
-			<Campo etiqueta="Tipo" nombre="tipo" tipo="select">
-				<option value="porcentaje">% de descuento</option>
-				<option value="monto">Monto fijo en $</option>
-				<option value="envio_gratis">Envío gratis</option>
-			</Campo>
-			<Campo etiqueta="Valor" nombre="valor" inputmode="decimal" placeholder="10" ayuda="El porcentaje (10 = 10%) o el monto en pesos, según el tipo. Para envío gratis se deja vacío." />
+			<div class="grid grid-cols-2 gap-4">
+				<Campo etiqueta="Tipo" nombre="tipo" tipo="select" data-tipo-cupon>
+					<option value="porcentaje">% de descuento</option>
+					<option value="monto">Monto fijo en $</option>
+					<option value="envio_gratis">Envío gratis</option>
+				</Campo>
+				<Campo etiqueta="Valor" nombre="valor" prefijo="%" inputmode="decimal" placeholder="10" class="[&:has(input:disabled)]:invisible" />
+			</div>
 			<Campo etiqueta="Compra mínima" nombre="minimo" prefijo="$" inputmode="decimal" placeholder="Sin mínimo" />
+			<div class="grid grid-cols-2 gap-4">
+				<Campo etiqueta="Usos máximos" nombre="usosMaximos" inputmode="numeric" placeholder="Sin tope" />
+				<Campo etiqueta="Vence" nombre="venceEn" tipo="datetime-local" />
+			</div>
+			<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Crear cupón</button>
+		</form>
+	</dialog>
+
+	<dialog id="editar-cupon" class="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="editar-cupon-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="editar-cupon-titulo" class="text-base font-medium text-gray-800">Editar cupón <span data-texto="codigo"></span></h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<input type="hidden" name="id" />
+			<Campo etiqueta="Compra mínima" nombre="minimo" prefijo="$" inputmode="decimal" />
 			<Campo etiqueta="Usos máximos" nombre="usosMaximos" inputmode="numeric" placeholder="Sin tope" />
 			<Campo etiqueta="Vence" nombre="venceEn" tipo="datetime-local" />
-			<button class="btn btn-primario justify-self-start"><Plus class="size-4" aria-hidden="true" />Crear cupón</button>
+			<div class="flex items-center justify-between gap-3">
+				<Interruptor etiqueta="Activo" nombre="activo" />
+				<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+			</div>
 		</form>
-	</Tarjeta>
+	</dialog>
 </Panel>
+
+<script src="../../scripts/alta.ts"></script>
+<script>
+	// El valor lleva % o $ según el tipo; en envío gratis no se pide.
+	const tipo = document.querySelector<HTMLSelectElement>('[data-tipo-cupon]')!;
+	const valor = document.querySelector<HTMLInputElement>('#alta-cupon input[name=valor]')!;
+	const cambiar = () => {
+		valor.parentElement!.querySelector('[data-prefijo]')!.textContent = tipo.value === 'monto' ? '$' : '%';
+		valor.disabled = tipo.value === 'envio_gratis';
+		if (valor.disabled) valor.value = '';
+	};
+	tipo.addEventListener('change', cambiar);
+	cambiar();
+</script>

@@ -1,0 +1,32 @@
+---
+// Todas las colecciones (el «Ver todas» del menú): una tarjeta con foto por colección.
+import Migas from '../components/tienda/Migas.astro';
+import Tienda from '../layouts/Tienda.astro';
+import { datosDeLaTienda } from '../lib/tienda';
+
+export const prerender = false;
+
+const { filtros } = await datosDeLaTienda(Astro.request);
+const colecciones = filtros.colecciones;
+---
+
+<Tienda titulo="Colecciones" descripcion="Todas las colecciones de Sukhä.">
+	<div class="contenedor pt-5 pb-4">
+		<Migas items={[{ texto: 'Colecciones' }]} />
+		<h1 class="mt-4 text-[40px] leading-none md:text-[64px]">Colecciones</h1>
+		{colecciones.length === 0 ? (
+			<p class="text-suave mt-10">Todavía no hay colecciones.</p>
+		) : (
+			<ul class="mt-10 grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-4 md:gap-x-6">
+				{colecciones.map((c) => (
+					<li>
+						<a href={`/coleccion/${c.slug}`} class="flex flex-col gap-3">
+							<span class="bg-arena block aspect-[3/4] overflow-hidden">{c.imagen && <img src={`/api/imagenes/${c.imagen}/mediano.webp`} alt="" loading="lazy" class="size-full object-cover" />}</span>
+							<span class="flex justify-between font-serif text-xl tracking-[-0.01em] md:text-[22px]"><span>{c.nombre}</span><span aria-hidden="true" class="font-sans text-base">→</span></span>
+						</a>
+					</li>
+				))}
+			</ul>
+		)}
+	</div>
+</Tienda>

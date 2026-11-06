@@ -39,7 +39,7 @@ const pedir = async (ruta, cuerpo) => {
 };
 
 // 1. Portada y páginas fijas
-for (const ruta of ['/', '/productos', '/ofertas', '/quienes-somos', '/preguntas-frecuentes', '/cambios-y-devoluciones', '/contacto', '/pedido/buscar', '/arrepentimiento', '/carrito', '/checkout']) {
+for (const ruta of ['/', '/productos', '/ofertas', '/quienes-somos', '/preguntas-frecuentes', '/cambios-y-devoluciones', '/contacto', '/pedido/buscar', '/arrepentimiento', '/privacidad', '/terminos', '/carrito', '/checkout']) {
   const r = await pedir(ruta);
   caso(`GET ${ruta}`, r.status === 200, String(r.status));
 }
@@ -75,7 +75,7 @@ const items = [{ varianteId: variante.id, cantidad: 1 }];
 const validado = (await pedir('/api/carrito/validar', { items, metodoPago: 'transferencia' })).json;
 caso('carrito válido', validado?.lineas?.length === 1 && validado.problemas.length === 0);
 caso('el total sale del servidor', validado?.totalCentavos > 0);
-const opciones = (await pedir('/api/envios/cotizar', { codigoPostal: '5000' })).json ?? [];
+const opciones = (await pedir('/api/envios/cotizar', { codigoPostal: '5000' })).json?.opciones ?? [];
 const envio = opciones.find((o) => o.modalidad === 'domicilio');
 
 // 5. Pedido por transferencia

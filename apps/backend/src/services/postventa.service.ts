@@ -4,9 +4,11 @@ import { nuevoToken } from '../utils/crypto';
 import type { EdicionSolicitud, NuevaSolicitud } from '../validations/tienda.validation';
 import { leerConfiguracion } from './configuracion.service';
 import { cargarPedido } from './pedidos.service';
+import { codigoArrepentimiento } from './plantillas.service';
 
-// Arrepentimiento, cambio o devolución. La inicia la clienta desde el seguimiento de su pedido;
-// queda registrada para el panel y avisa por email. El reembolso en sí se hace desde Mercado Pago o por transferencia.
+// Arrepentimiento, cambio o devolución. La inicia la clienta desde el seguimiento de su pedido (o el arrepentimiento, desde
+// el botón del pie); queda registrada para el panel y avisa por email. El reembolso en sí se hace desde Mercado Pago o por
+// transferencia. El arrepentimiento además le manda a la clienta el email con el código de su solicitud (Disp. 954/2025).
 const ESTADOS_CON_POSTVENTA = ['pagado', 'en_preparacion', 'enviado', 'listo_para_retirar', 'entregado'];
 
 export async function crearSolicitud(env: Env, token: string, d: z.infer<typeof NuevaSolicitud>) {
@@ -14,6 +16,15 @@ export async function crearSolicitud(env: Env, token: string, d: z.infer<typeof 
   const pedido = await cargarPedido(d1, { token });
   if (!ESTADOS_CON_POSTVENTA.includes(pedido.estado)) {
     throw new ErrorApp(409, 'Este pedido no admite solicitudes en su estado actual.');
+  }
+  // Un segundo arrepentimiento del mismo pedido (doble clic, o lo pide otra vez) devuelve el que ya estaba, sin otro email.
+  const esArrepentimiento = d.tipo === 'arrepentimiento';
+  if (esArrepentimiento) {
+    const previa = await d1
+      .prepare("SELECT id FROM solicitud_postventa WHERE pedido_id = ? AND tipo = 'arrepentimiento'")
+      .bind(pedido.id)
+      .first<{ id: number }>();
+    if (previa) return { id: previa.id, numero: pedido.numero, codigo: codigoArrepentimiento(pedido.numero) };
   }
   // Sin detalle, la solicitud abarca todo el pedido.
   const items = d.items.length ? d.items : pedido.items.map((i) => ({ pedidoItemId: i.id, cantidad: i.cantidad }));
@@ -34,8 +45,11 @@ export async function crearSolicitud(env: Env, token: string, d: z.infer<typeof 
     ...(email_avisos
       ? [d1.prepare("INSERT INTO email_saliente (pedido_id, destinatario, tipo) VALUES (?, ?, 'aviso_postventa')").bind(pedido.id, email_avisos)]
       : []),
+    ...(esArrepentimiento
+      ? [d1.prepare("INSERT INTO email_saliente (pedido_id, destinatario, tipo) VALUES (?, ?, 'arrepentimiento_recibido')").bind(pedido.id, pedido.email)]
+      : []),
   ]);
-  return { id: solicitud!.id, numero: pedido.numero };
+  return { id: solicitud!.id, numero: pedido.numero, codigo: esArrepentimiento ? codigoArrepentimiento(pedido.numero) : null };
 }
 
 export async function listarSolicitudes(d1: D1Database, estado?: string) {

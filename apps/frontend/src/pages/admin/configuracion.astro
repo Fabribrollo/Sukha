@@ -1,7 +1,10 @@
 ---
-import { Bell, CreditCard, FileText, Megaphone, Save, Store, Timer } from '@lucide/astro';
+import { Bell, CreditCard, FileText, ImagePlus, Landmark, Megaphone, Save, Store, Timer, Trash2 } from '@lucide/astro';
+import Ayuda from '../../components/panel/Ayuda.astro';
 import Campo from '../../components/panel/Campo.astro';
+import BarraGuardado from '../../components/panel/BarraGuardado.astro';
 import Interruptor from '../../components/panel/Interruptor.astro';
+import Pestanas from '../../components/panel/Pestanas.astro';
 import Tarjeta from '../../components/panel/Tarjeta.astro';
 import Panel from '../../layouts/Panel.astro';
 import { api, leer } from '../../lib/api';
@@ -10,21 +13,25 @@ import { errorDe } from '../../lib/panel';
 export const prerender = false;
 
 // Cada campo: clave en la configuración, etiqueta, tipo y ayuda (que se muestra detrás de una "i"). El backend valida cada valor.
-type Campo_ = { clave: string; etiqueta: string; tipo: 'texto' | 'numero' | 'casilla' | 'largo'; ayuda?: string; prefijo?: string; ejemplo?: string };
-const GRUPOS: { titulo: string; icono: any; ancho?: boolean; campos: Campo_[] }[] = [
+type Campo_ = { clave: string; etiqueta: string; tipo: 'texto' | 'numero' | 'casilla' | 'largo'; ayuda?: string; prefijo?: string; ejemplo?: string; nuevaFila?: boolean };
+const GRUPOS: { id: string; titulo: string; corto: string; icono: any; ancho?: boolean; campos: Campo_[] }[] = [
   {
+    id: 'pagos',
     titulo: 'Pagos',
+    corto: 'Pagos',
     icono: CreditCard,
     campos: [
       { clave: 'alias_transferencia', etiqueta: 'Alias para transferencias', tipo: 'texto' },
       { clave: 'titular_transferencia', etiqueta: 'Titular de la cuenta', tipo: 'texto' },
       { clave: 'descuento_transferencia_porcentaje', etiqueta: 'Descuento por transferencia', tipo: 'numero', prefijo: '%', ayuda: '0 = sin descuento.' },
-      { clave: 'cuotas_sin_interes', etiqueta: 'Cuotas sin interés', tipo: 'casilla', ayuda: 'El costo de las cuotas lo absorbés vos en Mercado Pago.' },
-      { clave: 'cuotas_cantidad', etiqueta: 'Cantidad de cuotas a mostrar', tipo: 'numero', ayuda: 'Solo se muestran si activaste las cuotas sin interés.' },
+      { clave: 'cuotas_sin_interes', etiqueta: 'Cuotas sin interés', tipo: 'casilla', nuevaFila: true, ayuda: 'El costo de las cuotas lo absorbés vos en Mercado Pago.' },
+      { clave: 'cuotas_cantidad', etiqueta: 'Cantidad de cuotas a mostrar', tipo: 'numero', ayuda: 'Se habilita al activar las cuotas sin interés.' },
     ],
   },
   {
+    id: 'reserva',
     titulo: 'Reserva de stock',
+    corto: 'Reserva',
     icono: Timer,
     campos: [
       { clave: 'reserva_mercado_pago_minutos', etiqueta: 'Minutos para pagar con Mercado Pago', tipo: 'numero', ayuda: 'Pasado ese tiempo sin pago, el pedido se cancela solo y el stock vuelve.' },
@@ -34,65 +41,77 @@ const GRUPOS: { titulo: string; icono: any; ancho?: boolean; campos: Campo_[] }[
     ],
   },
   {
-    titulo: 'Retiro en persona',
-    icono: Store,
-    campos: [
-      { clave: 'retiro_habilitado', etiqueta: 'Ofrecer retiro', tipo: 'casilla' },
-      { clave: 'retiro_direccion', etiqueta: 'Dirección', tipo: 'texto' },
-      { clave: 'retiro_horario', etiqueta: 'Días y horarios', tipo: 'texto', ejemplo: 'Lunes a viernes de 10 a 18' },
-    ],
-  },
-  {
+    id: 'tienda',
     titulo: 'Tienda',
+    corto: 'Tienda',
     icono: Megaphone,
     campos: [
+      { clave: 'titulo_tienda', etiqueta: 'Título de la tienda', tipo: 'texto', ejemplo: 'Sukhä', ayuda: 'El nombre que aparece en la pestaña del navegador y en Google, después de cada página.' },
       { clave: 'barra_anuncios', etiqueta: 'Barra de anuncios', tipo: 'texto', ejemplo: 'Envío gratis desde $100.000', ayuda: 'El cartel que va arriba de todo. Vacío = no se muestra.' },
+      { clave: 'vacaciones_activo', etiqueta: 'Modo vacaciones', tipo: 'casilla', ayuda: 'La tienda se sigue viendo pero no toma pedidos nuevos, y arriba de todo aparece un cartel. Las ventas que cargás vos desde Ventas siguen andando.' },
+      { clave: 'vacaciones_mensaje', etiqueta: 'Mensaje de vacaciones', tipo: 'texto', ejemplo: 'Volvemos el 15 de febrero', ayuda: 'Se suma al cartel. Opcional.' },
+      { clave: 'analytics_token', etiqueta: 'Estadísticas de visitas', tipo: 'texto', ejemplo: '0123456789abcdef0123456789abcdef', ayuda: 'Sin cookies y gratis, con Cloudflare Web Analytics: en el panel de Cloudflare, Web Analytics, agregá el sitio y pegá acá el código (token) que te da. Las visitas se ven en Cloudflare. Vacío = sin estadísticas.' },
       { clave: 'whatsapp', etiqueta: 'WhatsApp', tipo: 'texto', ejemplo: '+5493510000000', ayuda: 'Con código de país, solo números.' },
       { clave: 'instagram', etiqueta: 'Instagram', tipo: 'texto', prefijo: '@' },
       { clave: 'email_contacto', etiqueta: 'Email de contacto', tipo: 'texto', ayuda: 'El que ven las clientas en la tienda. Distinto del email donde recibís los avisos.' },
-      { clave: 'datos_legales', etiqueta: 'Datos legales', tipo: 'largo', ayuda: 'Razón social, CUIT y domicilio. Van al pie de la tienda.' },
       { clave: 'ultimas_unidades_umbral', etiqueta: '"Últimas unidades" desde', tipo: 'numero', ayuda: 'Con este stock o menos, la ficha avisa que quedan pocas.' },
     ],
   },
   {
+    // Lo que exige la ley en el pie (Res. 270/2020) y en los textos legales: se escribe una vez acá y aparece solo en
+    // Privacidad, Términos, Contacto y Arrepentimiento (ver Textos y legales).
+    id: 'comercio',
+    titulo: 'Datos del comercio',
+    corto: 'Comercio',
+    icono: Landmark,
+    campos: [
+      { clave: 'razon_social', etiqueta: 'Nombre y apellido o razón social', tipo: 'texto', ayuda: 'El titular del comercio, como figura en ARCA.' },
+      { clave: 'cuit', etiqueta: 'CUIT', tipo: 'texto', ejemplo: '20-12345678-9' },
+      { clave: 'condicion_fiscal', etiqueta: 'Condición fiscal', tipo: 'texto', ejemplo: 'Monotributista' },
+      { clave: 'domicilio_comercial', etiqueta: 'Domicilio del comercio', tipo: 'texto', ejemplo: 'Juan Bautista Alberdi 129, Neuquén' },
+      { clave: 'horario_atencion', etiqueta: 'Horario de consultas y reclamos', tipo: 'texto', ejemplo: 'de lunes a viernes de 9 a 17', ayuda: 'Por WhatsApp y email. La ley pide al menos 8 horas por día hábil. Se lee después de "Atendemos…", así que empezalo en minúscula.' },
+      { clave: 'responsable_atencion', etiqueta: 'Quién responde los reclamos', tipo: 'texto', ejemplo: 'la administración de Sukhä' },
+      { clave: 'data_fiscal_url', etiqueta: 'QR de Data Fiscal', tipo: 'texto', ejemplo: 'http://qr.afip.gob.ar/?qr=…', ayuda: 'En ARCA, formulario 960 (Data Fiscal), copiá el código que te da y pegalo entero acá: tomamos solo el link. Sale en el pie de la tienda.' },
+      { clave: 'datos_legales', etiqueta: 'Otros datos para el pie', tipo: 'largo', ayuda: 'Opcional: cualquier otro dato legal que quieras sumar al pie, debajo de los de arriba.' },
+    ],
+  },
+  {
+    id: 'avisos',
     titulo: 'Avisos para vos',
+    corto: 'Avisos',
     icono: Bell,
     campos: [
       { clave: 'email_avisos', etiqueta: 'Email de avisos', tipo: 'texto', ayuda: 'Ahí te llega cada venta, transferencia por confirmar, pago a revisar y post-venta. Vacío = sin avisos.' },
       { clave: 'stock_bajo_umbral', etiqueta: 'Stock bajo desde', tipo: 'numero', ayuda: 'Con este stock o menos, el producto aparece en "Stock bajo" del inicio.' },
     ],
   },
-  {
-    titulo: 'Textos de la tienda',
-    icono: FileText,
-    ancho: true,
-    campos: [
-      { clave: 'contenido_quienes_somos', etiqueta: 'Quiénes somos', tipo: 'largo' },
-      { clave: 'contenido_preguntas_frecuentes', etiqueta: 'Preguntas frecuentes', tipo: 'largo', ayuda: 'Una pregunta por bloque: la primera línea es la pregunta y las siguientes, la respuesta. Dejá una línea en blanco entre preguntas.' },
-      { clave: 'contenido_politica_cambios', etiqueta: 'Cambios y devoluciones', tipo: 'largo' },
-    ],
-  },
 ];
+// Los textos de la tienda (Quiénes somos, Preguntas, Cambios y los legales) se editan en Textos y legales.
 
-// Las preguntas frecuentes se guardan como lista de { pregunta, respuesta } para que la tienda las pueda mostrar plegables.
-const aPreguntas = (texto: string) =>
-  texto.split(/\r?\n\s*\r?\n/).map((bloque) => bloque.trim()).filter(Boolean).map((bloque) => {
-    const [pregunta, ...resto] = bloque.split(/\r?\n/);
-    return { pregunta: pregunta.trim(), respuesta: resto.join('\n').trim() };
-  });
-const dePreguntas = (valor: unknown) =>
-  Array.isArray(valor) ? valor.map((p: any) => `${p.pregunta}\n${p.respuesta}`).join('\n\n') : typeof valor === 'string' ? valor : '';
+// Del código que da ARCA para Data Fiscal (un <a href="…"><img …></a>) alcanza con el link.
+const linkDataFiscal = (crudo: string) => crudo.match(/href\s*=\s*["']?([^"'\s>]+)/i)?.[1] ?? crudo;
 
+// Una sección por vez (Pestanas.astro); se vuelve a la que se guardó o a la que dio error.
+let inicial = 'tienda';
 let error = '';
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
+  if (f.get('accion') === 'quitarLogo' || f.get('accion') === 'quitarFavicon') {
+    inicial = 'imagen';
+    const r = await api(Astro.request, f.get('accion') === 'quitarLogo' ? '/api/admin/logo' : '/api/admin/favicon', undefined, 'DELETE');
+    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok#imagen`, 303);
+    error = await errorDe(r);
+  }
   const grupo = GRUPOS.find((g) => g.titulo === f.get('grupo'));
+  if (grupo) inicial = grupo.id;
   for (const campo of grupo?.campos ?? []) {
+    // Con las cuotas apagadas el campo de cantidad viaja deshabilitado: se conserva lo guardado.
+    if (campo.clave === 'cuotas_cantidad' && f.get('cuotas_sin_interes') === null) continue;
     const crudo = String(f.get(campo.clave) ?? '').trim();
     const valor =
       campo.tipo === 'casilla' ? f.get(campo.clave) !== null
       : campo.tipo === 'numero' ? Number(crudo)
-      : campo.clave === 'contenido_preguntas_frecuentes' ? aPreguntas(crudo)
+      : campo.clave === 'data_fiscal_url' ? linkDataFiscal(crudo)
       : crudo;
     const r = await api(Astro.request, `/api/admin/configuracion/${campo.clave}`, { valor }, 'PUT');
     if (!r.ok) {
@@ -100,35 +119,98 @@ if (Astro.request.method === 'POST') {
       break;
     }
   }
-  if (!error) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+  // Desde la barra «Cambios sin guardar» cada sección se manda sola y pide la respuesta en JSON.
+  if (Astro.request.headers.get('accept') === 'application/json') return Response.json(error ? { error } : { ok: true }, { status: error ? 400 : 200 });
+  if (!error) return Astro.redirect(`${Astro.url.pathname}?ok#${inicial}`, 303);
 }
+const PESTANAS = [
+  ...GRUPOS.filter((g) => g.id === 'tienda').map((g) => ({ id: g.id, nombre: g.corto, icono: g.icono })),
+  { id: 'imagen', nombre: 'Logo', icono: ImagePlus },
+  ...GRUPOS.filter((g) => g.id !== 'tienda').map((g) => ({ id: g.id, nombre: g.corto, icono: g.icono })),
+  { id: 'textos', nombre: 'Textos', icono: FileText, href: '/admin/textos' },
+];
 
 const config = await leer<Record<string, unknown>>(Astro.request, '/api/admin/configuracion');
-const texto = (c: Campo_) => (c.clave === 'contenido_preguntas_frecuentes' ? dePreguntas(config[c.clave]) : String(config[c.clave] ?? ''));
+// El logo se sirve desde el mismo lugar que las fotos; la configuración guarda solo su clave.
+const logo = config.logo_clave ? `/api/imagenes/${config.logo_clave}/grande.webp` : null;
+const favicon = config.favicon_clave ? `/api/imagenes/${config.favicon_clave}/grande.webp` : null;
+const texto = (c: Campo_) => String(config[c.clave] ?? '');
 ---
 
 <Panel titulo="Configuración" error={error}>
-	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-[12rem_minmax(0,1fr)]">
+		<Pestanas etiqueta="Secciones de la configuración" pestanas={PESTANAS} inicial={inicial} lateral />
+		<div class="min-w-0">
+		<div data-panel="imagen" hidden={inicial !== 'imagen'}>
+		<Tarjeta titulo="Logo y favicon">
+			<ImagePlus slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<div class="grid gap-6 md:grid-cols-2 md:divide-x md:divide-gray-100">
+				{[
+					{ nombre: 'Logo', url: logo, accion: 'quitarLogo', ruta: '/api/admin/logo', tamanos: '{"logo":600}', caja: 'h-16 w-40', img: 'max-h-12', vacio: 'SUKHÄ', ayuda: 'Se ve en la cabecera de la tienda. Sin logo, se muestra el nombre en texto. Usá fondo transparente y al menos 400 px de ancho.' },
+					{ nombre: 'Favicon', url: favicon, accion: 'quitarFavicon', ruta: '/api/admin/favicon', tamanos: '{"favicon":64}', caja: 'size-16', img: 'size-8', vacio: 'Sin', ayuda: 'El iconito de la pestaña del navegador. Usá una imagen cuadrada de al menos 64 px.' },
+				].map((i) => (
+					<div class="flex items-center gap-4 md:first:pr-6 md:last:pl-6">
+						<div class={`flex ${i.caja} shrink-0 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 px-2`}>
+							{i.url ? <img src={i.url} alt={`${i.nombre} actual`} class={`${i.img} max-w-full object-contain`} /> : <span class="text-theme-xs font-semibold tracking-widest text-gray-400">{i.vacio}</span>}
+						</div>
+						<div class="min-w-0 flex-1">
+							<p class="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">{i.nombre}<Ayuda>{i.ayuda}</Ayuda></p>
+							<div class="flex flex-wrap items-center gap-2">
+								<form data-subida={i.ruta} data-auto data-tamanos={i.tamanos} class="flex items-center gap-2">
+									<label class="btn btn-secundario cursor-pointer">
+										<ImagePlus class="size-4" aria-hidden="true" />{i.url ? 'Cambiar' : 'Subir'}
+										<input type="file" name="foto" accept="image/*" required class="sr-only" />
+									</label>
+									<p data-estado class="text-theme-xs text-gray-500" role="status"></p>
+								</form>
+								{/* Quitar pide confirmación, como en la lista de productos: el tacho abre un segundo botón. */}
+								{i.url && (
+									<details class="group flex items-center">
+										<summary class="btn btn-peligro-suave group-open:hidden" aria-label={`Quitar ${i.nombre.toLowerCase()}`} title="Quitar"><Trash2 class="size-4" aria-hidden="true" /></summary>
+										<form method="post">
+											<input type="hidden" name="accion" value={i.accion} />
+											<button class="btn btn-peligro"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+										</form>
+									</details>
+								)}
+							</div>
+						</div>
+					</div>
+				))}
+			</div>
+		</Tarjeta>
+		</div>
 		{GRUPOS.map((g) => {
 			const Icono = g.icono;
 			return (
-				<Tarjeta titulo={g.titulo} class={g.ancho ? 'lg:col-span-2' : ''}>
+				<div data-panel={g.id} hidden={inicial !== g.id}>
+				<Tarjeta titulo={g.titulo}>
 					<Icono slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-					<form method="post" class="space-y-4">
+					<form method="post" class={`grid gap-4 ${g.ancho ? 'lg:grid-cols-3' : 'sm:grid-cols-2'}`} data-pendiente={g.titulo} autocomplete="off">
 						<input type="hidden" name="grupo" value={g.titulo} />
 						{g.campos.map((c) =>
 							c.tipo === 'casilla' ? (
-								<Interruptor etiqueta={c.etiqueta} nombre={c.clave} marcado={config[c.clave] === true} ayuda={c.ayuda} />
+								<Interruptor class={c.nuevaFila ? "self-end pb-2.5 sm:col-start-1" : "self-end pb-2.5"} etiqueta={c.etiqueta} nombre={c.clave} marcado={config[c.clave] === true} ayuda={c.ayuda} />
 							) : c.tipo === 'largo' ? (
-								<Campo etiqueta={c.etiqueta} nombre={c.clave} tipo="area" valor={texto(c)} ayuda={c.ayuda} rows="6" />
+								<Campo class={g.ancho ? '' : 'sm:col-span-2'} etiqueta={c.etiqueta} nombre={c.clave} tipo="area" valor={texto(c)} ayuda={c.ayuda} rows="4" />
 							) : (
-								<Campo etiqueta={c.etiqueta} nombre={c.clave} valor={texto(c)} ayuda={c.ayuda} prefijo={c.prefijo} placeholder={c.ejemplo} inputmode={c.tipo === 'numero' ? 'numeric' : undefined} />
+								<Campo etiqueta={c.etiqueta} nombre={c.clave} valor={texto(c)} ayuda={c.ayuda} prefijo={c.prefijo} placeholder={c.ejemplo} inputmode={c.tipo === 'numero' ? 'numeric' : undefined} disabled={c.clave === 'cuotas_cantidad' && config.cuotas_sin_interes !== true} />
 							),
 						)}
-						<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+						<div class={g.ancho ? 'lg:col-span-3' : 'sm:col-span-2'}><button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button></div>
 					</form>
 				</Tarjeta>
+				</div>
 			);
 		})}
+		</div>
 	</div>
+	<BarraGuardado />
 </Panel>
+<script src="../../scripts/fotos.ts"></script>
+<script>
+	// La cantidad de cuotas solo se puede tocar con las cuotas sin interés activadas.
+	const activar = document.querySelector<HTMLInputElement>('input[name=cuotas_sin_interes]');
+	const cantidad = document.querySelector<HTMLInputElement>('input[name=cuotas_cantidad]');
+	activar?.addEventListener('change', () => cantidad && (cantidad.disabled = !activar.checked));
+</script>

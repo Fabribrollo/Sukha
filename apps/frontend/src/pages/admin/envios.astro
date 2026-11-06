@@ -1,20 +1,37 @@
 ---
-import { Home, MapPin, Pause, Pencil, Plus, Save, Store, Truck, X } from '@lucide/astro';
+// Envíos en pestañas (Zonas, Retiro, Bultos, Precios): ver components/panel/Pestanas.astro. Cada zona se edita en su
+// ventana, con sus códigos postales. Después de guardar se vuelve a la misma pestaña (#zonas…) y, si se tocaron los
+// códigos de una zona o se acaba de crear, su ventana se abre sola (?zona=id) para seguir cargando.
+import { Check, ChevronRight, Home, MapPin, Package, Pencil, Plus, RefreshCw, Save, Store, Trash2, Truck, X } from '@lucide/astro';
+import Ayuda from '../../components/panel/Ayuda.astro';
+import BarraGuardado from '../../components/panel/BarraGuardado.astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
 import Interruptor from '../../components/panel/Interruptor.astro';
+import Pestanas from '../../components/panel/Pestanas.astro';
 import Tarjeta from '../../components/panel/Tarjeta.astro';
 import Vacio from '../../components/panel/Vacio.astro';
 import Panel from '../../layouts/Panel.astro';
 import { api, leer } from '../../lib/api';
+import { DIAS, NOMBRE_DIA, horariosDeFormulario, textoDeHorarios, type Horarios } from '../../lib/horarios';
 import { TRANSPORTES, centavos, enCampo, entero, errorDe, marcado, pesos, txt } from '../../lib/panel';
 
 export const prerender = false;
 
+// La pestaña de cada formulario: a ella se vuelve después de guardar o si hubo un error.
+const PESTANA: Record<string, string> = { zona: 'zonas', rango: 'zonas', borrarRango: 'zonas', retiro: 'retiro', bultos: 'bultos', consultarPrecios: 'precios', aplicarPrecios: 'precios' };
+let inicial = 'zonas';
+let altaFallida = false;
 let error = '';
+// Vista previa de precios nuevos (Shipy), si se acaba de consultar.
+type Fila = { zona: string; transporte: string; modalidad: string; centavos: number; actualCentavos: number | null };
+let vista: { tramos: { peso: number; filas: Fila[]; desdeCache: boolean }[] } | null = null;
+const TRAMOS = [1000, 3000, 5000, 10000];
+let consulta = { origen: 8300, margen: 10, incluirAndreani: false };
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
-  const accion = f.get('accion');
+  const accion = String(f.get('accion'));
+  inicial = PESTANA[accion] ?? inicial;
   let r: Response | null = null;
   if (accion === 'zona') {
     const precio = centavos(f, 'precio');
@@ -22,105 +39,392 @@ if (Astro.request.method === 'POST') {
     if (precio === null || Number.isNaN(precio) || Number.isNaN(gratis)) error = 'Revisá los montos: van en pesos, por ejemplo 8000.';
     else {
       const id = f.get('id');
-      const datos = { nombre: txt(f, 'nombre'), precioCentavos: precio, gratisDesdeCentavos: gratis || null };
+      const escalones = [3000, 5000, 10000].flatMap((g) => {
+        const c = centavos(f, `precio${g / 1000}`);
+        return c === null || Number.isNaN(c) ? [] : [{ hastaGramos: g, precioCentavos: c }];
+      });
+      const datos = { nombre: txt(f, 'nombre'), precioCentavos: precio, gratisDesdeCentavos: gratis || null, escalones };
       r = id
         ? await api(Astro.request, `/api/admin/zonas/${id}`, { ...datos, activa: marcado(f, 'activa') }, 'PATCH')
         : await api(Astro.request, '/api/admin/zonas', { ...datos, transporte: f.get('transporte'), modalidad: f.get('modalidad') });
     }
+    altaFallida = !f.get('id');
   } else if (accion === 'rango') {
     const desde = entero(f, 'cpDesde');
     r = await api(Astro.request, `/api/admin/zonas/${f.get('id')}/rangos`, { cpDesde: desde, cpHasta: entero(f, 'cpHasta') ?? desde });
+  } else if (accion === 'consultarPrecios' || accion === 'aplicarPrecios') {
+    consulta = { origen: Number(f.get('origen')), margen: Number(String(f.get('margen')).replace(',', '.')), incluirAndreani: f.get('incluirAndreani') !== null };
+    const cuerpo = (peso: number) => ({ ...consulta, pesoGramos: peso, redondeo: 100 });
+    // Un tramo de peso por pedido al backend: cada uno consulta unos 20 códigos postales.
+    if (accion === 'aplicarPrecios') {
+      for (const peso of TRAMOS) {
+        r = await api(Astro.request, '/api/admin/envios/precios/aplicar', cuerpo(peso));
+        if (!r.ok) break;
+      }
+    } else {
+      const tramos = [];
+      for (const peso of TRAMOS) {
+        const respuesta = await api(Astro.request, '/api/admin/envios/precios/vista-previa', cuerpo(peso));
+        if (!respuesta.ok) {
+          error = await errorDe(respuesta);
+          break;
+        }
+        tramos.push({ peso, ...(await respuesta.json()) });
+      }
+      if (!error) vista = { tramos };
+    }
+  } else if (accion === 'retiro') {
+    const horarios = horariosDeFormulario(f);
+    const campos: [string, unknown][] = [
+      ['retiro_habilitado', f.get('habilitado') !== null],
+      ['retiro_direccion', String(f.get('direccion') ?? '').trim()],
+      ['retiro_horarios', horarios],
+      // El texto corto que ve la clienta se arma desde los horarios.
+      ['retiro_horario', textoDeHorarios(horarios)],
+    ];
+    for (const [clave, valor] of campos) {
+      r = await api(Astro.request, `/api/admin/configuracion/${clave}`, { valor }, 'PUT');
+      if (!r.ok) break;
+    }
+  } else if (accion === 'bultos') {
+    // Cada fila del formulario es un bulto; las filas sin nombre se descartan.
+    const nombres = f.getAll('bultoNombre').map(String);
+    const campo = (nombre: string, i: number) => Number(String(f.getAll(nombre)[i] ?? '').replace(',', '.'));
+    const bultos = nombres
+      .map((nombre, i) => ({ nombre: nombre.trim(), altoCm: campo('bultoAlto', i), anchoCm: campo('bultoAncho', i), largoCm: campo('bultoLargo', i), pesoMaxGramos: campo('bultoPeso', i) }))
+      .filter((b) => b.nombre);
+    for (const [clave, valor] of [['cp_origen', String(f.get('cpOrigen') ?? '').trim()], ['peso_defecto_gramos', Number(f.get('pesoDefecto'))], ['bultos', bultos]] as const) {
+      r = await api(Astro.request, `/api/admin/configuracion/${clave}`, { valor }, 'PUT');
+      if (!r.ok) break;
+    }
   } else if (accion === 'borrarRango') {
     r = await api(Astro.request, `/api/admin/rangos/${f.get('id')}`, undefined, 'DELETE');
   }
-  if (r?.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
-  if (r) error = await errorDe(r);
+  if (r && !r.ok) error = await errorDe(r);
+  // Bultos se guarda desde la barra «Cambios sin guardar», que pide la respuesta en JSON.
+  if (Astro.request.headers.get('accept') === 'application/json') return Response.json(error ? { error } : { ok: true }, { status: error ? 400 : 200 });
+  if (r?.ok) {
+    const zona = accion === 'rango' ? f.get('id') : accion === 'borrarRango' ? f.get('zona') : accion === 'zona' && !f.get('id') ? (await r.json()).id : null;
+    return Astro.redirect(`${Astro.url.pathname}?ok${zona ? `&zona=${zona}` : ''}#${inicial}`, 303);
+  }
 }
 
-const zonas = await leer<any[]>(Astro.request, '/api/admin/zonas');
+const [zonas, config] = await Promise.all([leer<any[]>(Astro.request, '/api/admin/zonas'), leer<Record<string, any>>(Astro.request, '/api/admin/configuracion')]);
+if (!vista) consulta = { ...consulta, origen: Number(config.cp_origen) || 8300 };
+const variacion = (nuevo: number, actual: number | null) => (actual ? Math.round(((nuevo - actual) / actual) * 100) : null);
+const NOMBRE_TRANSPORTE: Record<string, string> = { andreani: 'Andreani', correo_argentino: 'Correo Argentino' };
+const retiroHorarios = (config.retiro_horarios ?? {}) as Horarios;
+// Sin horarios cargados todavía, se muestra el texto anterior.
+const retiroTexto = textoDeHorarios(retiroHorarios) || String(config.retiro_horario ?? '');
+// Una fila vacía al final para sumar un bulto nuevo.
+const filasBultos = [...(config.bultos ?? []), { nombre: '', altoCm: '', anchoCm: '', largoCm: '', pesoMaxGramos: '' }];
+const zonaAbierta = Astro.url.searchParams.get('zona');
+const PESTANAS = [
+  { id: 'zonas', nombre: 'Zonas', icono: Truck },
+  { id: 'retiro', nombre: 'Retiro', icono: Store },
+  { id: 'bultos', nombre: 'Bultos', icono: Package },
+  { id: 'precios', nombre: 'Precios', icono: RefreshCw },
+];
+const MEDIDAS = [
+  { nombre: 'bultoAlto', campo: 'altoCm', corto: 'Alto cm', largo: 'Alto en centímetros' },
+  { nombre: 'bultoAncho', campo: 'anchoCm', corto: 'Ancho cm', largo: 'Ancho en centímetros' },
+  { nombre: 'bultoLargo', campo: 'largoCm', corto: 'Largo cm', largo: 'Largo en centímetros' },
+  { nombre: 'bultoPeso', campo: 'pesoMaxGramos', corto: 'Peso máx. g', largo: 'Peso máximo en gramos' },
+];
+const ventana = 'm-auto max-h-[92vh] w-[calc(100%-1.5rem)] max-w-lg overflow-y-auto rounded-2xl p-0 backdrop:bg-gray-900/50';
 ---
 
 <Panel titulo="Envíos" error={error}>
-	<a slot="acciones" href="/admin/configuracion" class="btn btn-secundario"><Store class="size-4" aria-hidden="true" />Retiro en persona</a>
+	<div class="space-y-5">
+		<Pestanas etiqueta="Secciones de envíos" pestanas={PESTANAS} inicial={inicial} />
 
-	{zonas.length === 0 && <Tarjeta alRas><Vacio texto="Sin zonas no se puede comprar con envío. Creá la primera abajo."><Truck aria-hidden="true" /></Vacio></Tarjeta>}
+		<section data-panel="zonas" hidden={inicial !== 'zonas'}>
+			<Tarjeta titulo={`Zonas (${zonas.length})`} alRas>
+				<Truck slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+				<Fragment slot="acciones">
+					<Ayuda lado="derecha">Cada zona es un correo y una forma de entrega con su precio. A la clienta le aparecen las zonas que incluyen su código postal.</Ayuda>
+					<button type="button" data-alta="alta-zona" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva</button>
+				</Fragment>
+				{zonas.length === 0 && <Vacio texto="Sin zonas no se puede comprar con envío."><Truck aria-hidden="true" /></Vacio>}
+				<ul class="divide-y divide-gray-100">
+					{zonas.map((z) => {
+						const Modalidad = z.modalidad === 'sucursal' ? MapPin : Home;
+						return (
+							<li>
+								<button type="button" data-alta={`zona-${z.id}`} class:list={['flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-gray-50 sm:px-6', !z.activa && 'opacity-60']}>
+									<span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500" title={z.modalidad === 'sucursal' ? 'A sucursal' : 'A domicilio'}><Modalidad class="size-4" aria-hidden="true" /></span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-sm font-medium text-gray-800">{z.nombre}</span>
+										<span class="text-theme-xs block truncate text-gray-500">
+											{!z.activa && <span class="font-medium text-gray-700">Pausada · </span>}
+											{z.rangos.length === 0 && <span class="text-warning-600 font-medium">Sin códigos · </span>}
+											{TRANSPORTES[z.transporte]} · {z.modalidad === 'sucursal' ? 'sucursal' : 'domicilio'}
+										</span>
+									</span>
+									<span class="text-sm font-semibold text-gray-800 tabular-nums" title="Precio hasta 1 kg">{pesos(z.precioCentavos)}</span>
+									<ChevronRight class="size-4 shrink-0 text-gray-400" aria-hidden="true" />
+								</button>
+							</li>
+						);
+					})}
+				</ul>
+			</Tarjeta>
+		</section>
 
-	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-		{zonas.map((z) => {
-			const Modalidad = z.modalidad === 'sucursal' ? MapPin : Home;
-			return (
-				<Tarjeta titulo={z.nombre} class={!z.activa ? 'opacity-70' : ''}>
-					<Truck slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-					<Fragment slot="acciones">
-						{!z.activa && <Insignia><Pause aria-hidden="true" />Pausada</Insignia>}
-						<span class="text-base font-semibold text-gray-800 tabular-nums">{pesos(z.precioCentavos)}</span>
-					</Fragment>
-					<div class="space-y-4">
-						<div class="flex flex-wrap gap-2">
-							<Insignia color="azul">{TRANSPORTES[z.transporte]}</Insignia>
-							<Insignia color="celeste"><Modalidad aria-hidden="true" />{z.modalidad === 'sucursal' ? 'A sucursal' : 'A domicilio'}</Insignia>
-							{z.gratisDesdeCentavos && <Insignia color="verde">Gratis desde {pesos(z.gratisDesdeCentavos)}</Insignia>}
-						</div>
+		<section data-panel="retiro" hidden={inicial !== 'retiro'}>
+			<Tarjeta titulo="Retiro en persona">
+				<Store slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+				<Fragment slot="acciones">
+					<Insignia color={config.retiro_habilitado ? 'verde' : 'gris'}>{config.retiro_habilitado ? 'Activo' : 'Apagado'}</Insignia>
+					<button type="button" data-abrir-retiro class="btn btn-secundario"><Pencil class="size-4" aria-hidden="true" />Editar</button>
+				</Fragment>
+				<dl class="grid gap-3 text-sm sm:grid-cols-2">
+					<div><dt class="text-theme-xs text-gray-500">Dirección</dt><dd class="text-gray-800">{config.retiro_direccion || <span class="text-gray-400">Sin cargar</span>}</dd></div>
+					<div><dt class="text-theme-xs text-gray-500">Días y horarios</dt><dd class="text-gray-800">{retiroTexto || <span class="text-gray-400">Sin cargar</span>}</dd></div>
+				</dl>
+			</Tarjeta>
+		</section>
 
-						<div>
-							<p class="etiqueta">Códigos postales</p>
-							<ul class="flex flex-wrap gap-2">
-								{z.rangos.length === 0 && <li><Insignia color="ambar">Ninguno: no le aparece a nadie</Insignia></li>}
-								{z.rangos.map((r: any) => (
-									<li>
-										<form method="post" class="text-theme-sm inline-flex items-center gap-1 rounded-lg border border-gray-200 py-1 pr-1 pl-2.5 font-medium text-gray-700 tabular-nums">
-											<input type="hidden" name="accion" value="borrarRango" /><input type="hidden" name="id" value={r.id} />
-											{r.cpDesde === r.cpHasta ? r.cpDesde : `${r.cpDesde} – ${r.cpHasta}`}
-											<button class="hover:bg-error-50 hover:text-error-600 flex size-6 cursor-pointer items-center justify-center rounded text-gray-400" title="Quitar" aria-label={`Quitar códigos ${r.cpDesde} a ${r.cpHasta}`}><X class="size-3.5" aria-hidden="true" /></button>
-										</form>
-									</li>
-								))}
-							</ul>
-						</div>
-
-						<form method="post" class="flex items-end gap-2">
-							<input type="hidden" name="accion" value="rango" /><input type="hidden" name="id" value={z.id} />
-							<Campo etiqueta="Desde" nombre="cpDesde" inputmode="numeric" required placeholder="5000" class="flex-1" />
-							<Campo etiqueta="Hasta" nombre="cpHasta" inputmode="numeric" placeholder="5999" class="flex-1" />
-							<button class="btn btn-secundario" title="Agregar códigos postales" aria-label="Agregar códigos postales"><Plus class="size-4" aria-hidden="true" /></button>
-						</form>
-
-						<details class="group border-t border-gray-100 pt-3">
-							<summary class="hover:text-brand-500 text-theme-sm inline-flex items-center gap-1.5 font-medium text-gray-500"><Pencil class="size-4" aria-hidden="true" />Editar precio</summary>
-							<form method="post" class="mt-4 space-y-4">
-								<input type="hidden" name="accion" value="zona" /><input type="hidden" name="id" value={z.id} />
-								<Campo etiqueta="Nombre" nombre="nombre" valor={z.nombre} required maxlength="60" />
-								<div class="flex gap-3">
-									<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" valor={enCampo(z.precioCentavos)} required class="flex-1" />
-									<Campo etiqueta="Gratis desde" nombre="gratis" prefijo="$" inputmode="decimal" valor={enCampo(z.gratisDesdeCentavos)} placeholder="Nunca" class="flex-1" />
-								</div>
-								<div class="flex items-center justify-between gap-3">
-									<Interruptor etiqueta="Activa" nombre="activa" marcado={z.activa === 1} />
-									<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
-								</div>
-							</form>
-						</details>
+		<section data-panel="bultos" hidden={inicial !== 'bultos'}>
+			<Tarjeta titulo="Bultos y peso">
+				<Package slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+				<Ayuda slot="acciones" lado="derecha">Los correos cobran según el peso y las medidas del paquete. La tienda elige el bulto más chico donde entra el peso del carrito (cuando el cálculo con MiCorreo está conectado). Declará bien las medidas: los correos cobran la diferencia si el paquete real es más grande.</Ayuda>
+				<form method="post" class="space-y-5" data-pendiente="Bultos" autocomplete="off">
+					<input type="hidden" name="accion" value="bultos" />
+					<div class="grid gap-3 sm:grid-cols-2">
+						<Campo etiqueta="Código postal de origen" nombre="cpOrigen" valor={config.cp_origen} inputmode="numeric" maxlength="8" ayuda="De dónde despachás los pedidos." />
+						<Campo etiqueta="Peso si el producto no tiene" nombre="pesoDefecto" valor={config.peso_defecto_gramos} inputmode="numeric" prefijo="g" ayuda="Se usa con los productos que no tienen el peso cargado." />
 					</div>
-				</Tarjeta>
-			);
-		})}
+					<div>
+						<div class="text-theme-xs mb-1 hidden grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_2.5rem] gap-2 text-gray-500 sm:grid" aria-hidden="true">
+							<span>Nombre</span>{MEDIDAS.map((m) => <span>{m.corto}</span>)}
+						</div>
+						<ul class="space-y-4 sm:space-y-2">
+							{filasBultos.map((b: any) => (
+								<li data-bulto class="grid grid-cols-4 items-end gap-2 sm:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_2.5rem]">
+									<div class:list={['flex flex-col sm:col-span-1', b.nombre ? 'col-span-3' : 'col-span-4']}>
+										<span class="text-theme-xs text-gray-500 sm:hidden">Nombre</span>
+										<input name="bultoNombre" value={b.nombre} maxlength="40" placeholder="Nuevo bulto" aria-label="Nombre del bulto" class="campo h-10" />
+									</div>
+									{MEDIDAS.map((m) => (
+										<div class="flex flex-col">
+											<span class="text-theme-xs text-gray-500 sm:hidden">{m.corto}</span>
+											<input name={m.nombre} value={b[m.campo]} inputmode="numeric" aria-label={m.largo} class="campo h-10" />
+										</div>
+									))}
+									<button type="button" data-quitar-bulto hidden={!b.nombre} class="btn-icono hover:bg-error-50 hover:text-error-600 col-start-4 row-start-1 justify-self-end sm:col-start-auto sm:row-start-auto" title="Quitar este bulto" aria-label={`Quitar el bulto ${b.nombre}`}><Trash2 class="size-4" aria-hidden="true" /></button>
+								</li>
+							))}
+						</ul>
+					</div>
+					<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+				</form>
+			</Tarjeta>
+		</section>
+
+		<section data-panel="precios" hidden={inicial !== 'precios'}>
+			<Tarjeta titulo="Actualizar precios">
+				<RefreshCw slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+				<Ayuda slot="acciones" lado="derecha">Consulta la calculadora pública de Shipy (tarifa pública de los correos, no la oficial) para los tramos de 1, 3, 5 y 10 kg y suma tu margen. Tarda alrededor de un minuto. Conviene hacerlo una vez por mes y confirmar un par de precios en los sitios de los correos.</Ayuda>
+				<div class="space-y-4">
+					<p class="text-theme-sm text-gray-600">Trae los precios nuevos de cada zona. No cambia nada hasta que confirmes.</p>
+					<form method="post" class="flex flex-wrap items-end gap-3">
+						<input type="hidden" name="accion" value="consultarPrecios" />
+						<Campo etiqueta="Código postal de origen" nombre="origen" valor={consulta.origen} inputmode="numeric" maxlength="4" class="w-40" />
+						<Campo etiqueta="Margen" nombre="margen" valor={consulta.margen} inputmode="decimal" prefijo="%" class="w-32" />
+						<div class="pb-2.5"><Interruptor etiqueta="Incluir Andreani" nombre="incluirAndreani" marcado={consulta.incluirAndreani} ayuda="La tarifa pública de Andreani en Shipy es más baja que la oficial. Dejalo apagado si cargaste los precios oficiales." /></div>
+						<button class="btn btn-primario"><RefreshCw class="size-4" aria-hidden="true" />Consultar precios</button>
+					</form>
+					{vista && (
+						<div class="space-y-3">
+							<p class="text-theme-xs text-gray-500">Origen {consulta.origen}, margen {consulta.margen} %, redondeado hacia arriba a $100. En cada tramo: precio nuevo y, abajo, el actual.</p>
+							<div class="overflow-x-auto rounded-xl border border-gray-200">
+								<table class="w-full min-w-[40rem] text-left text-sm">
+									<thead class="text-theme-xs bg-gray-50 text-gray-500"><tr><th class="px-3 py-2 font-medium">Zona</th><th class="px-3 py-2 font-medium">Correo y entrega</th>{vista.tramos.map((t) => <th class="px-3 py-2 text-right font-medium">Hasta {t.peso / 1000} kg</th>)}</tr></thead>
+									<tbody class="divide-y divide-gray-100">
+										{vista.tramos[0].filas.map((base, i) => (
+											<tr>
+												<td class="px-3 py-2">{base.zona}</td>
+												<td class="px-3 py-2">{NOMBRE_TRANSPORTE[base.transporte]} · {base.modalidad === 'domicilio' ? 'domicilio' : 'sucursal'}</td>
+												{vista.tramos.map((t) => {
+													const p = t.filas[i];
+													const cambio = p ? variacion(p.centavos, p.actualCentavos) : null;
+													return (
+														<td class="px-3 py-2 text-right tabular-nums">
+															<span class="font-medium">{p ? pesos(p.centavos) : ''}</span>
+															<span class="text-theme-xs block text-gray-400">{p?.actualCentavos == null ? 'No existe' : pesos(p.actualCentavos)}{cambio ? <span class:list={[cambio > 0 ? 'text-error-600' : 'text-success-600']}> {cambio > 0 ? '+' : ''}{cambio} %</span> : null}</span>
+														</td>
+													);
+												})}
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+							<form method="post" class="flex flex-wrap items-center gap-3">
+								<input type="hidden" name="accion" value="aplicarPrecios" />
+								<input type="hidden" name="origen" value={consulta.origen} /><input type="hidden" name="margen" value={consulta.margen} />
+								{consulta.incluirAndreani && <input type="hidden" name="incluirAndreani" value="on" />}
+								<button class="btn btn-primario"><Check class="size-4" aria-hidden="true" />Aplicar estos precios</button>
+								<p class="text-theme-xs text-gray-500">Solo cambia el precio de las zonas que ya existen; los códigos postales y el envío gratis quedan como están.</p>
+							</form>
+						</div>
+					)}
+				</div>
+			</Tarjeta>
+		</section>
 	</div>
 
-	<Tarjeta titulo="Nueva zona">
-		<Plus slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-		<form method="post" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+	{zonas.map((z) => (
+		<dialog id={`zona-${z.id}`} data-abrir={zonaAbierta === String(z.id) ? '' : undefined} class={ventana} aria-labelledby={`zona-${z.id}-titulo`}>
+			<div class="space-y-5 p-5 sm:p-6">
+				<div class="flex items-center justify-between gap-3">
+					<h2 id={`zona-${z.id}-titulo`} class="min-w-0 truncate text-base font-medium text-gray-800">{z.nombre}</h2>
+					<button type="button" data-cerrar autofocus class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					<Insignia color="azul">{TRANSPORTES[z.transporte]}</Insignia>
+					<Insignia color="celeste">{z.modalidad === 'sucursal' ? 'A sucursal' : 'A domicilio'}</Insignia>
+				</div>
+
+				<form method="post" class="space-y-4">
+					<input type="hidden" name="accion" value="zona" /><input type="hidden" name="id" value={z.id} />
+					<Campo etiqueta="Nombre" nombre="nombre" valor={z.nombre} required maxlength="60" />
+					<div class="grid grid-cols-2 gap-3">
+						<Campo etiqueta="Hasta 1 kg" nombre="precio" prefijo="$" inputmode="decimal" valor={enCampo(z.precioCentavos)} required />
+						<Campo etiqueta="Gratis desde" nombre="gratis" prefijo="$" inputmode="decimal" valor={enCampo(z.gratisDesdeCentavos)} placeholder="Nunca" ayuda="Con una compra de este monto o más, el envío sale gratis." />
+						{[3000, 5000, 10000].map((g) => (
+							<Campo etiqueta={`Hasta ${g / 1000} kg`} nombre={`precio${g / 1000}`} prefijo="$" inputmode="decimal" valor={enCampo(z.escalones?.find((e: any) => e.hastaGramos === g)?.precioCentavos ?? null)} placeholder="Igual" ayuda={g === 10000 ? 'Más de 10 kg no se ofrece envío: la clienta ve que lo consulte por WhatsApp.' : undefined} />
+						))}
+					</div>
+					<div class="flex items-center justify-between gap-3">
+						<Interruptor etiqueta="Activa" nombre="activa" marcado={z.activa === 1} />
+						<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+					</div>
+				</form>
+
+				<div class="space-y-3 border-t border-gray-100 pt-4">
+					<div class="etiqueta">Códigos postales<Ayuda>La zona le aparece a quien tenga uno de estos códigos. Un rango (5000 a 5999) incluye todos los del medio.</Ayuda></div>
+					<ul class="flex flex-wrap gap-2">
+						{z.rangos.length === 0 && <li><Insignia color="ambar">Ninguno: no le aparece a nadie</Insignia></li>}
+						{z.rangos.map((r: any) => (
+							<li>
+								<form method="post" class="text-theme-sm inline-flex items-center gap-1 rounded-lg border border-gray-200 py-1 pr-1 pl-2.5 font-medium text-gray-700 tabular-nums">
+									<input type="hidden" name="accion" value="borrarRango" /><input type="hidden" name="id" value={r.id} /><input type="hidden" name="zona" value={z.id} />
+									{r.cpDesde === r.cpHasta ? r.cpDesde : `${r.cpDesde} – ${r.cpHasta}`}
+									{/* Quitar pide confirmación (sin rangos, la zona no le aparece a nadie): la × abre un segundo botón. */}
+									<details class="group flex items-center">
+										<summary class="hover:bg-error-50 hover:text-error-600 flex size-6 cursor-pointer items-center justify-center rounded text-gray-400 group-open:hidden" title="Quitar" aria-label={`Quitar códigos ${r.cpDesde} a ${r.cpHasta}`}><X class="size-3.5" aria-hidden="true" /></summary>
+										<button class="btn btn-peligro text-theme-xs gap-1 px-2 py-0.5"><Trash2 class="size-3.5" aria-hidden="true" />¿Borrar?</button>
+									</details>
+								</form>
+							</li>
+						))}
+					</ul>
+					<form method="post" class="flex items-end gap-2">
+						<input type="hidden" name="accion" value="rango" /><input type="hidden" name="id" value={z.id} />
+						<Campo etiqueta="Desde" nombre="cpDesde" inputmode="numeric" required placeholder="5000" class="flex-1" />
+						<Campo etiqueta="Hasta" nombre="cpHasta" inputmode="numeric" placeholder="5999" class="flex-1" />
+						<button class="btn btn-secundario" title="Agregar códigos postales" aria-label="Agregar códigos postales"><Plus class="size-4" aria-hidden="true" /></button>
+					</form>
+				</div>
+			</div>
+		</dialog>
+	))}
+
+	<dialog id="alta-zona" data-abrir={altaFallida && error ? '' : undefined} class={ventana} aria-labelledby="alta-zona-titulo">
+		<form method="post" class="space-y-4 p-5 sm:p-6">
 			<input type="hidden" name="accion" value="zona" />
-			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" placeholder="Córdoba capital" class="lg:col-span-2" />
-			<Campo etiqueta="Correo" nombre="transporte" tipo="select">
-				{Object.entries(TRANSPORTES).map(([v, n]) => <option value={v}>{n}</option>)}
-			</Campo>
-			<Campo etiqueta="Entrega" nombre="modalidad" tipo="select">
-				<option value="domicilio">A domicilio</option>
-				<option value="sucursal">A sucursal</option>
-			</Campo>
-			<Campo etiqueta="Precio" nombre="precio" prefijo="$" inputmode="decimal" required />
-			<Campo etiqueta="Gratis desde" nombre="gratis" prefijo="$" inputmode="decimal" placeholder="Nunca" ayuda="Con una compra de este monto o más, el envío sale gratis." />
-			<button class="btn btn-primario sm:col-span-2 lg:col-span-6 lg:justify-self-start"><Plus class="size-4" aria-hidden="true" />Crear zona</button>
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="alta-zona-titulo" class="text-base font-medium text-gray-800">Nueva zona</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" placeholder="Córdoba capital" />
+			<div class="grid grid-cols-2 gap-3">
+				<Campo etiqueta="Correo" nombre="transporte" tipo="select">
+					{Object.entries(TRANSPORTES).map(([v, n]) => <option value={v}>{n}</option>)}
+				</Campo>
+				<Campo etiqueta="Entrega" nombre="modalidad" tipo="select">
+					<option value="domicilio">A domicilio</option>
+					<option value="sucursal">A sucursal</option>
+				</Campo>
+				<Campo etiqueta="Hasta 1 kg" nombre="precio" prefijo="$" inputmode="decimal" required />
+				<Campo etiqueta="Gratis desde" nombre="gratis" prefijo="$" inputmode="decimal" placeholder="Nunca" ayuda="Con una compra de este monto o más, el envío sale gratis." />
+			</div>
+			<p class="text-theme-xs text-gray-500">Después de crearla, cargás sus códigos postales.</p>
+			<div class="flex justify-end gap-2">
+				<button type="button" data-cerrar class="btn btn-secundario">Cancelar</button>
+				<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Crear zona</button>
+			</div>
 		</form>
-	</Tarjeta>
+	</dialog>
+
+	<dialog id="retiro-modal" class="m-auto max-h-[92vh] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="retiro-modal-titulo">
+		<form method="post" class="space-y-5 p-5 sm:p-6">
+			<input type="hidden" name="accion" value="retiro" />
+			<div class="flex items-center justify-between gap-3">
+				<h2 id="retiro-modal-titulo" class="text-base font-medium text-gray-800">Retiro en persona</h2>
+				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
+			</div>
+			<Interruptor etiqueta="Ofrecer retiro en persona" nombre="habilitado" marcado={config.retiro_habilitado === true} />
+			<Campo etiqueta="Dirección" nombre="direccion" valor={config.retiro_direccion} maxlength="200" placeholder="Alberdi 129, Neuquén" />
+
+			<fieldset class="space-y-2">
+				<legend class="etiqueta flex items-center gap-1.5">Días y horarios<Ayuda>Marcá los días que abrís. Con «Agregar horario» sumás una franja más el mismo día (por ejemplo, de 9 a 13 y de 16 a 20).</Ayuda></legend>
+				<ul class="divide-y divide-gray-100 rounded-xl border border-gray-200">
+					{DIAS.map((dia) => {
+						const franjas = retiroHorarios[dia] ?? [];
+						return (
+							<li data-dia={dia} class="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
+								<label class="flex w-32 shrink-0 cursor-pointer items-center gap-2.5 pt-2 text-sm font-medium text-gray-800 select-none">
+									<input type="checkbox" name={`abre_${dia}`} checked={franjas.length > 0} class="text-brand-500 focus:ring-brand-500/30 size-4 rounded border-gray-300" />
+									{NOMBRE_DIA[dia]}
+								</label>
+								<span data-cerrado hidden={franjas.length > 0} class="pt-2 text-sm text-gray-400">Cerrado</span>
+								<div class="min-w-0 flex-1 space-y-2">
+									<div data-franjas class="space-y-2">
+										{franjas.map((x) => (
+											<div data-franja class="flex items-center gap-2">
+												<input type="time" name={`desde_${dia}`} data-campo="desde" value={x.desde} aria-label={`${NOMBRE_DIA[dia]}: abre`} class="campo h-10 w-32" />
+												<span class="text-gray-400" aria-hidden="true">a</span>
+												<input type="time" name={`hasta_${dia}`} data-campo="hasta" value={x.hasta} aria-label={`${NOMBRE_DIA[dia]}: cierra`} class="campo h-10 w-32" />
+												<button type="button" data-quitar-franja class="btn-icono hover:bg-error-50 hover:text-error-600" title="Quitar este horario" aria-label={`Quitar horario del ${NOMBRE_DIA[dia].toLowerCase()}`}><Trash2 class="size-4" aria-hidden="true" /></button>
+											</div>
+										))}
+									</div>
+									<button type="button" data-agregar-franja class="text-brand-500 hover:text-brand-600 inline-flex items-center gap-1.5 text-sm font-medium"><Plus class="size-4" aria-hidden="true" />Agregar horario</button>
+								</div>
+							</li>
+						);
+					})}
+				</ul>
+			</fieldset>
+			<template id="franja-molde">
+				<div data-franja class="flex items-center gap-2">
+					<input type="time" data-campo="desde" value="09:00" aria-label="Abre" class="campo h-10 w-32" />
+					<span class="text-gray-400" aria-hidden="true">a</span>
+					<input type="time" data-campo="hasta" value="13:00" aria-label="Cierra" class="campo h-10 w-32" />
+					<button type="button" data-quitar-franja class="btn-icono hover:bg-error-50 hover:text-error-600" title="Quitar este horario" aria-label="Quitar este horario"><Trash2 class="size-4" aria-hidden="true" /></button>
+				</div>
+			</template>
+
+			<div class="flex justify-end gap-2">
+				<button type="button" data-cerrar class="btn btn-secundario">Cancelar</button>
+				<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+			</div>
+		</form>
+	</dialog>
+	<BarraGuardado />
 </Panel>
+<script src="../../scripts/retiro-horarios.ts"></script>
+<script src="../../scripts/alta.ts"></script>
+<script>
+	// Quitar un bulto vacía su fila: al guardar, las filas sin nombre se descartan.
+	document.addEventListener('click', (e) => {
+		const quitar = (e.target as Element).closest<HTMLElement>('[data-quitar-bulto]');
+		if (!quitar) return;
+		const fila = quitar.closest('[data-bulto]')!;
+		for (const input of fila.querySelectorAll('input')) input.value = '';
+		fila.toggleAttribute('hidden', true);
+	});
+</script>

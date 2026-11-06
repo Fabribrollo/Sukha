@@ -1,0 +1,41 @@
+---
+// Texto del panel con su formato mínimo (subtítulos, listas, negritas, links y datos de Configuración; ver lib/textos.ts).
+// Todo se escribe como texto, nunca como HTML. Lo que falta completar se ve resaltado.
+import { bloquesDe, type Parte } from '../../lib/textos';
+import type { Tienda } from '../../lib/formato';
+
+interface Props {
+  texto: unknown;
+  tienda: Tienda;
+  class?: string;
+}
+const { texto, tienda, class: clase } = Astro.props;
+const bloques = bloquesDe(texto, tienda);
+const externo = (href: string) => /^https?:/.test(href);
+---
+
+{bloques.length > 0 && (
+	<div class:list={['space-y-4 leading-relaxed', clase]}>
+		{bloques.map((b) => {
+			const linea = (partes: Parte[]) =>
+				partes.map((p) =>
+					p.href ? (
+						<a href={p.href} target={externo(p.href) ? '_blank' : undefined} rel={externo(p.href) ? 'noopener' : undefined} class:list={['underline underline-offset-4', p.negrita && 'font-medium']}>{p.texto}</a>
+					) : p.falta ? (
+						<mark class="bg-aviso-fondo text-aviso px-1">{p.texto}</mark>
+					) : p.negrita ? (
+						<strong class="font-medium">{p.texto}</strong>
+					) : (
+						p.texto
+					),
+				);
+			return b.tipo === 'titulo' ? (
+				<h2 class="pt-4 text-lg">{linea(b.partes)}</h2>
+			) : b.tipo === 'lista' ? (
+				<ul class="list-disc space-y-2 pl-5">{b.items.map((i) => <li>{linea(i)}</li>)}</ul>
+			) : (
+				<p>{b.lineas.map((l, n) => (n ? [<br />, linea(l)] : linea(l)))}</p>
+			);
+		})}
+	</div>
+)}

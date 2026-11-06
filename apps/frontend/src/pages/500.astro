@@ -1,0 +1,40 @@
+---
+// Página de error amable: la ve la clienta cuando el backend falla (corte de la base, límite por IP…) en lugar de un error
+// crudo. No le pide nada al backend, porque puede ser justo lo que está caído: por eso no tiene cabecera ni pie.
+import '../styles/tienda.css';
+import Logo from '../components/tienda/Logo.astro';
+
+export const prerender = false;
+
+// Sale como 503 + Retry-After (el 503 lo pone middleware.ts al ver esta cabecera): para Google es un corte momentáneo y
+// vuelve a pasar más tarde, sin sacar la página del índice.
+Astro.response.headers.set('Retry-After', '60');
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<!doctype html>
+<html lang="es-AR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Figtree:wght@300..700&display=swap" />
+		<title>Volvé en un minuto | Sukhä</title>
+		<meta name="robots" content="noindex" />
+		<link rel="icon" href="/favicon.svg" />
+	</head>
+	<body class="flex min-h-screen flex-col">
+		<header class="contenedor flex justify-center py-5">
+			<Logo />
+		</header>
+		<main id="contenido" class="contenedor flex flex-1 flex-col items-center justify-center py-16 text-center">
+			<h1 class="text-3xl">Estamos con un problema momentáneo</h1>
+			<p class="text-suave mt-3">Probá de nuevo en un minuto. Tu carrito sigue guardado.</p>
+			<div class="mt-6 flex flex-wrap justify-center gap-3">
+				<a href="" class="boton boton-primario">Reintentar</a>
+				<a href="/" class="boton boton-secundario">Ir al inicio</a>
+			</div>
+		</main>
+	</body>
+</html>

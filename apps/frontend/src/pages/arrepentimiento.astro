@@ -1,16 +1,19 @@
 ---
 import BuscarPedido from '../components/tienda/BuscarPedido.tsx';
+import TextoConFormato from '../components/tienda/TextoConFormato.astro';
 import Tienda from '../layouts/Tienda.astro';
+import { textoDe } from '../lib/textos';
+import { datosDeLaTienda } from '../lib/tienda';
 
 export const prerender = false;
+
+const { tienda } = await datosDeLaTienda(Astro.request);
 ---
 
 <Tienda titulo="Botón de arrepentimiento" descripcion="Arrepentite de tu compra sin costo, dentro de los 10 días corridos de recibida.">
 	<div class="contenedor max-w-lg py-8 md:py-10">
-		<h1 class="mb-2 text-2xl font-semibold md:text-3xl">Botón de arrepentimiento</h1>
-		<p class="text-suave mb-8 text-sm">
-			Tenés 10 días corridos desde que recibiste tu compra para arrepentirte, sin costo. Ley 24.240, art. 34. Escribí los datos de tu pedido y lo gestionamos con vos.
-		</p>
+		<h1 class="mb-2 text-2xl md:text-3xl">Botón de arrepentimiento</h1>
+		<TextoConFormato class="text-suave mb-8 text-sm" texto={textoDe('contenido_arrepentimiento', tienda.contenido)} tienda={tienda} />
 		<BuscarPedido client:only="preact" modo="arrepentimiento" />
 	</div>
 </Tienda>

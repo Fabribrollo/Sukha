@@ -10,11 +10,14 @@ interface Props {
   columnas?: 3 | 4;
   // Cuántas de las primeras tarjetas cargan sus fotos de inmediato (las que se ven sin hacer scroll).
   prioridad?: number;
+  // Puntitos de color y precio con transferencia en cada tarjeta (listados).
+  detalle?: boolean;
+  transferenciaEscritorio?: boolean;
 }
-const { productos, tienda, columnas = 4, prioridad = 0 } = Astro.props;
+const { productos, tienda, columnas = 4, prioridad = 0, detalle = false, transferenciaEscritorio = false } = Astro.props;
 const sizes = columnas === 4 ? '(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw' : '(min-width: 1024px) 22vw, (min-width: 640px) 33vw, 50vw';
 ---
 
-<ul class:list={['grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-5', columnas === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3 xl:grid-cols-4']}>
-	{productos.map((p, i) => <li><TarjetaProducto producto={p} tienda={tienda} prioridad={i < prioridad} sizes={sizes} /></li>)}
+<ul class:list={['grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-5', columnas === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3 md:gap-x-6 md:gap-y-14']}>
+	{productos.map((p, i) => <li><TarjetaProducto producto={p} tienda={tienda} prioridad={i < prioridad} sizes={sizes} detalle={detalle} transferenciaEscritorio={transferenciaEscritorio} /></li>)}
 </ul>

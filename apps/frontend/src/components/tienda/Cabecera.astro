@@ -1,102 +1,190 @@
 ---
-// Cabecera de la tienda: barra de anuncios, logo, menú (en el celular, un panel lateral), buscador y carrito.
-// El menú del celular se abre con una casilla oculta (#menu-t), sin JavaScript.
-import { ChevronDown, Menu, MessageCircle, PackageSearch, ShoppingBag, X } from '@lucide/astro';
-import IconoInstagram from './IconoInstagram.astro';
-import { enlaceWhatsapp, type Filtros, type Tienda } from '../../lib/formato';
+// Cabecera de la tienda, como en el diseño: barra de anuncios, menú a la izquierda, logo al centro, búsqueda y carrito.
+// El menú lo arma el panel (Tienda → Cabecera): qué entradas se ven, en qué orden, en qué pantalla y con qué fotos.
+// Escritorio: al pasar por una entrada con panel (categoría con subcategorías o «Colecciones») se abre un panel a todo el ancho.
+// Celular: un menú a pantalla completa, con una pantalla por entrada con panel (scripts/menu-tienda.ts).
+// El menú del celular se abre con una casilla oculta (#menu-t). Sin JavaScript, cada link lleva a su página.
+import { ChevronLeft, ChevronRight, Menu, Search, ShoppingBag, X } from '@lucide/astro';
+import { type Tienda } from '../../lib/formato';
+import { type MenuCabecera } from '../../lib/tienda';
 import Buscador from './Buscador.tsx';
 import ContadorCarrito from './ContadorCarrito.tsx';
 import Logo from './Logo.astro';
 
 interface Props {
   tienda: Tienda;
-  filtros: Filtros;
+  menu: MenuCabecera;
+  // La portada empieza con el hero: la cabecera se dibuja encima, transparente (como en el diseño).
+  superpuesta?: boolean;
 }
-const { tienda, filtros } = Astro.props;
+const { tienda, menu, superpuesta = false } = Astro.props;
 const ruta = Astro.url.pathname;
 const actual = (href: string) => ruta === href || (href !== '/' && ruta.startsWith(`${href}/`));
-// En escritorio, hasta 6 categorías en el menú y el resto en "Más".
-const visibles = filtros.categorias.slice(0, 6);
-const resto = filtros.categorias.slice(6);
-const enlace = 'text-sm font-medium inline-flex min-h-11 items-center hover:underline underline-offset-4 aria-[current=page]:underline';
+type Entrada = MenuCabecera['items'][number];
+const clave = (e: Entrada) => (e.tipo === 'colecciones' ? 'colecciones' : `cat-${e.id}`);
+const conPanel = (e: Entrada) => e.tipo !== 'enlace';
+const deEscritorio = menu.items.filter((e) => e.dispositivo !== 'celular');
+const deCelular = menu.items.filter((e) => e.dispositivo !== 'escritorio');
+const foto = (k: string) => `/api/imagenes/${k}/mediano.webp`;
+const enlace = 'text-[15px] flex h-full items-center hover:text-suave';
+const subrayado = 'shadow-[inset_0_-1px_0_var(--color-texto)]';
+const subrayadoAbierto = 'aria-expanded:shadow-[inset_0_-1px_0_var(--color-texto)]';
+const fila = 'flex min-h-[60px] items-center justify-between border-b border-linea font-serif text-[30px] tracking-[-0.02em] w-full';
 ---
 
-{tienda.barraAnuncios && <div class="bg-primario text-primario-texto px-4 py-2 text-center text-sm">{tienda.barraAnuncios}</div>}
+{tienda.vacaciones && <div class="bg-texto text-fondo px-4 py-[11px] text-center text-xs tracking-[0.12em]" role="status">Estamos de vacaciones: no tomamos pedidos por ahora. {tienda.vacaciones.mensaje}</div>}
+{tienda.barraAnuncios && <div class="bg-primario text-primario-texto px-4 py-[11px] text-center text-xs tracking-[0.18em] uppercase">{tienda.barraAnuncios}</div>}
 
 <input type="checkbox" id="menu-t" class="peer sr-only" aria-label="Abrir o cerrar el menú" />
 
-<!-- Menú del celular -->
-<aside class="fixed inset-y-0 left-0 z-50 flex w-[85%] max-w-sm -translate-x-full flex-col bg-white shadow-xl transition-transform duration-200 peer-checked:translate-x-0 md:hidden" aria-label="Menú">
-	<div class="border-linea flex h-16 shrink-0 items-center justify-between border-b px-4">
-		<Logo />
-		<label for="menu-t" class="boton-icono" title="Cerrar menú"><X class="size-5" aria-hidden="true" /></label>
+<!-- Menú del celular: pantalla completa -->
+<aside data-menu-movil class="bg-fondo fixed inset-0 z-50 flex translate-x-full flex-col overflow-y-auto transition-transform duration-200 peer-checked:translate-x-0 md:hidden" aria-label="Menú">
+	<div class="border-linea grid h-[60px] shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b px-2">
+		<label for="menu-t" class="boton-icono" title="Cerrar menú" aria-label="Cerrar menú"><X class="size-[22px]" aria-hidden="true" /></label>
+		<Logo logo={tienda.logo} class="justify-self-center" />
+		<div class="flex justify-self-end">
+			<a href="/buscar" class="boton-icono" title="Buscar" aria-label="Buscar"><Search class="size-5" aria-hidden="true" /></a>
+			<a href="/carrito" class="boton-icono" title="Carrito" aria-label="Carrito"><ShoppingBag class="size-5" aria-hidden="true" /></a>
+		</div>
 	</div>
-	<nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="Menú principal">
-		<ul class="divide-linea divide-y">
-			<li><a href="/productos" class="block py-3 text-base font-medium">Todos los productos</a></li>
-			{filtros.categorias.map((c) => c.hijas.length === 0 ? (
-				<li><a href={`/categoria/${c.slug}`} class="block py-3 text-base">{c.nombre}</a></li>
-			) : (
-				<li>
-					<details class="group">
-						<summary class="flex min-h-11 cursor-pointer list-none items-center justify-between py-3 text-base [&::-webkit-details-marker]:hidden">{c.nombre}<ChevronDown class="size-5 transition group-open:rotate-180" aria-hidden="true" /></summary>
-						<ul class="border-linea mb-2 ml-1 border-l pl-4">
-							<li><a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center text-sm font-medium">Ver todo {c.nombre}</a></li>
-							{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="text-suave flex min-h-11 items-center text-sm">{h.nombre}</a></li>)}
-						</ul>
-					</details>
-				</li>
-			))}
-			{filtros.colecciones.map((c) => <li><a href={`/coleccion/${c.slug}`} class="block py-3 text-base">{c.nombre}</a></li>)}
-			<li><a href="/ofertas" class="text-oferta block py-3 text-base font-semibold">Ofertas</a></li>
-		</ul>
-		<ul class="border-linea mt-2 space-y-1 border-t pt-3 text-sm">
-			<li><a href="/pedido/buscar" class="flex items-center gap-2 min-h-11 py-2"><PackageSearch class="size-4" aria-hidden="true" />Buscar mi pedido</a></li>
-			<li><a href="/preguntas-frecuentes" class="flex min-h-11 items-center py-2">Preguntas frecuentes</a></li>
-			<li><a href="/contacto" class="flex min-h-11 items-center py-2">Contacto</a></li>
-			{tienda.instagram && <li><a href={`https://instagram.com/${tienda.instagram}`} rel="noopener" class="flex items-center gap-2 min-h-11 py-2"><IconoInstagram class="size-4" aria-hidden="true" />Instagram</a></li>}
-			{tienda.whatsapp && <li><a href={enlaceWhatsapp(tienda.whatsapp)} rel="noopener" class="flex items-center gap-2 min-h-11 py-2"><MessageCircle class="size-4" aria-hidden="true" />WhatsApp</a></li>}
-		</ul>
-	</nav>
-</aside>
-<label for="menu-t" class="fixed inset-0 z-40 hidden bg-black/50 peer-checked:block md:peer-checked:hidden" aria-hidden="true"></label>
 
-<header class="border-linea sticky top-0 z-30 border-b bg-white">
-	<div class="contenedor flex h-16 items-center gap-2">
-		<label for="menu-t" class="boton-icono md:hidden" title="Abrir menú"><Menu class="size-6" aria-hidden="true" /></label>
-		<Logo class="max-md:absolute max-md:left-1/2 max-md:-translate-x-1/2" />
-
-		<nav class="hidden flex-1 justify-center gap-6 md:flex" aria-label="Menú principal">
-			<a href="/" class={enlace} aria-current={ruta === '/' ? 'page' : undefined}>Inicio</a>
-			{visibles.map((c) => c.hijas.length === 0 ? (
-				<a href={`/categoria/${c.slug}`} class={enlace} aria-current={actual(`/categoria/${c.slug}`) ? 'page' : undefined}>{c.nombre}</a>
-			) : (
-				<div class="group relative">
-					<a href={`/categoria/${c.slug}`} class:list={[enlace, 'gap-1']} aria-current={actual(`/categoria/${c.slug}`) || c.hijas.some((h) => actual(`/categoria/${h.slug}`)) ? 'page' : undefined}>{c.nombre}<ChevronDown class="size-4" aria-hidden="true" /></a>
-					<ul class="border-linea rounded-tienda invisible absolute top-full left-0 z-40 min-w-48 border bg-white py-1 opacity-0 shadow-lg transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
-						<li><a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center px-4 text-sm font-medium hover:bg-gris">Ver todo {c.nombre}</a></li>
-						{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="flex min-h-11 items-center px-4 text-sm hover:bg-gris">{h.nombre}</a></li>)}
-					</ul>
-				</div>
-			))}
-			{resto.length > 0 && (
-				<details class="relative">
-					<summary class:list={[enlace, 'flex items-center gap-1']}>Más <ChevronDown class="size-4" aria-hidden="true" /></summary>
-					<ul class="border-linea rounded-tienda absolute top-full left-0 z-40 mt-1 min-w-44 border bg-white py-1 shadow-lg">
-						{resto.map((c) => <li><a href={`/categoria/${c.slug}`} class="flex min-h-11 items-center px-4 text-sm hover:bg-gris">{c.nombre}</a></li>)}
-					</ul>
-				</details>
-			)}
-			<a href="/ofertas" class:list={[enlace, 'text-oferta']} aria-current={actual('/ofertas') ? 'page' : undefined}>Ofertas</a>
+	<!-- Pantalla principal -->
+	<div data-pantalla="principal" class="flex flex-1 flex-col">
+		<nav aria-label="Menú principal" class="px-5 pt-2">
+			<ul>
+				{deCelular.map((e) => (
+					<li>
+						{conPanel(e) ? (
+							<button type="button" data-ir={clave(e)} class={`${fila} cursor-pointer text-left`}>{e.texto}<ChevronRight class="size-[18px]" aria-hidden="true" /></button>
+						) : (
+							<a href={e.href} class={fila}>{e.texto}</a>
+						)}
+					</li>
+				))}
+			</ul>
 		</nav>
+		{menu.tarjetasMovil.length > 0 && (
+			<div class="grid grid-cols-2 gap-2.5 px-5 pt-7">
+				{menu.tarjetasMovil.map((h) => (
+					<a href={h.href} class="flex flex-col gap-2.5">
+						<span class="bg-arena block h-[200px] overflow-hidden">{h.imagen && <img src={foto(h.imagen)} alt="" loading="lazy" class="size-full object-cover" />}</span>
+						<span class="flex justify-between text-[15px]"><span>{h.titulo}</span><span aria-hidden="true">→</span></span>
+					</a>
+				))}
+			</div>
+		)}
+		<ul class="text-[#4a463f] mt-auto flex gap-6 px-5 pt-8 pb-6 text-sm">
+			<li><a href="/pedido/buscar">Seguí tu pedido</a></li>
+			<li><a href="/cambios-y-devoluciones">Cambios y devoluciones</a></li>
+		</ul>
+	</div>
 
-		<div class="ml-auto flex items-center gap-1">
+	<!-- Una pantalla por entrada con panel -->
+	{deCelular.filter(conPanel).map((e) => e.tipo === 'colecciones' ? (
+		<nav data-pantalla={clave(e)} hidden aria-label={e.texto} class="px-5">
+			<button type="button" data-volver class="text-[#4a463f] flex h-[52px] cursor-pointer items-center gap-1.5 text-sm"><ChevronLeft class="size-[18px]" aria-hidden="true" />Volver</button>
+			<div class="border-texto flex items-baseline justify-between border-b pb-3.5">
+				<h2 class="text-[30px] tracking-[-0.02em]">{e.texto}</h2>
+				<a href={e.href} class={`text-sm ${subrayado}`}>Ver todas</a>
+			</div>
+			<ul class="grid grid-cols-2 gap-x-2.5 gap-y-5 pt-5">
+				{e.tarjetas?.map((c) => (
+					<li>
+						<a href={c.href} class="flex flex-col gap-2.5">
+							<span class="bg-arena block h-[236px] overflow-hidden">{c.imagen && <img src={foto(c.imagen)} alt="" loading="lazy" class="size-full object-cover" />}</span>
+							<span class="flex justify-between font-serif text-[19px] tracking-[-0.01em]"><span>{c.titulo}</span><span aria-hidden="true" class="font-sans text-[15px]">→</span></span>
+						</a>
+					</li>
+				))}
+			</ul>
+		</nav>
+	) : (
+		<nav data-pantalla={clave(e)} hidden aria-label={e.texto} class="px-5">
+			<button type="button" data-volver class="text-[#4a463f] flex h-[52px] cursor-pointer items-center gap-1.5 text-sm"><ChevronLeft class="size-[18px]" aria-hidden="true" />Volver</button>
+			<div class="border-texto flex items-baseline justify-between border-b pb-3.5">
+				<h2 class="text-[30px] tracking-[-0.02em]">{e.texto}</h2>
+				<a href={e.href} class={`text-sm ${subrayado}`}>Ver todo</a>
+			</div>
+			<ul class="grid grid-cols-2 gap-x-5">
+				{e.hijas?.map((h) => <li><a href={h.href} class="border-linea flex min-h-12 items-center border-b text-base">{h.nombre}</a></li>)}
+			</ul>
+			{(e.tarjetas?.length ?? 0) > 0 && (
+				<div class="grid grid-cols-2 gap-2.5 pt-7">
+					{e.tarjetas!.map((h) => (
+						<a href={h.href} class="flex flex-col gap-2.5">
+							<span class="bg-arena block h-[200px] overflow-hidden">{h.imagen && <img src={foto(h.imagen)} alt="" loading="lazy" class="size-full object-cover" />}</span>
+							<span class="flex justify-between text-[15px]"><span>{h.titulo}</span><span aria-hidden="true">→</span></span>
+						</a>
+					))}
+				</div>
+			)}
+		</nav>
+	))}
+</aside>
+
+<header data-cabecera class:list={['z-40', superpuesta ? 'relative -mb-16 md:-mb-[84px]' : 'border-linea bg-fondo sticky top-0 border-b']}>
+	<div class="mx-auto grid h-16 w-full max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center px-2 md:h-[84px] md:px-14">
+		<div class="flex h-full items-center">
+			<label for="menu-t" class="boton-icono md:hidden" title="Abrir menú"><Menu class="size-6" aria-hidden="true" /></label>
+			<nav class="hidden h-full gap-7 md:flex" aria-label="Menú principal">
+				{deEscritorio.map((e) => conPanel(e) ? (
+					<a href={e.href} data-menu-abre={clave(e)} aria-expanded="false" class:list={[enlace, subrayadoAbierto, actual(e.href) && subrayado]} aria-current={actual(e.href) ? 'page' : undefined}>{e.texto}</a>
+				) : (
+					<a href={e.href} data-menu-sin-panel class:list={[enlace, actual(e.href) && subrayado]} aria-current={actual(e.href) ? 'page' : undefined}>{e.texto}</a>
+				))}
+			</nav>
+		</div>
+		<Logo logo={tienda.logo} class="justify-self-center" />
+		<div class="flex items-center justify-self-end gap-1">
 			<Buscador client:idle />
-			<a href="/pedido/buscar" class="boton-icono hidden md:inline-flex" title="Buscar mi pedido" aria-label="Buscar mi pedido"><PackageSearch class="size-5" aria-hidden="true" /></a>
 			<!-- Depende de lo guardado en el navegador: se dibuja solo ahí (si no, la cantidad queda desactualizada). Mientras carga, la bolsa sin número. -->
 			<ContadorCarrito client:only="preact">
-				<a href="/carrito" slot="fallback" class="boton-icono" title="Carrito" aria-label="Carrito"><ShoppingBag class="size-6" aria-hidden="true" /></a>
+				<a href="/carrito" slot="fallback" class="boton-icono" title="Carrito" aria-label="Carrito"><ShoppingBag class="size-5" aria-hidden="true" /></a>
 			</ContadorCarrito>
 		</div>
 	</div>
+
+	<!-- Paneles de escritorio: se abren debajo de la cabecera, con el resto de la página atenuado. -->
+	<div data-menu-fondo hidden aria-hidden="true" class="pointer-events-none absolute top-full left-0 -z-10 h-screen w-full bg-[rgb(30_28_25/0.35)] max-md:hidden"></div>
+	{deEscritorio.filter(conPanel).map((e) => e.tipo === 'colecciones' ? (
+		<div data-panel={clave(e)} hidden class="border-linea bg-fondo absolute top-full left-0 w-full border-y max-md:hidden">
+			<div class="mx-auto max-w-[1440px] px-14 pt-10 pb-12">
+				<div class="mb-6 flex items-baseline justify-between"><span class="text-suave text-[13px]">{e.texto}</span><a href={e.href} class={`text-sm ${subrayado}`}>Ver todas</a></div>
+				<ul class="grid grid-cols-4 gap-6">
+					{e.tarjetas?.map((c) => (
+						<li>
+							<a href={c.href} class="flex flex-col gap-3">
+								<span class="bg-arena block h-[340px] overflow-hidden">{c.imagen && <img src={foto(c.imagen)} alt="" loading="lazy" class="size-full object-cover" />}</span>
+								<span class="flex justify-between font-serif text-[22px] tracking-[-0.01em]"><span>{c.titulo}</span><span aria-hidden="true" class="font-sans text-base">→</span></span>
+							</a>
+						</li>
+					))}
+				</ul>
+			</div>
+		</div>
+	) : (
+		<div data-panel={clave(e)} hidden class="border-linea bg-fondo absolute top-full left-0 w-full border-y max-md:hidden">
+			<div class="mx-auto grid max-w-[1440px] grid-cols-[1fr_1fr_1fr_1.1fr_1.1fr] gap-12 px-14 pt-12 pb-14">
+				<div class="flex flex-col gap-3.5">
+					<a href={e.href} class="text-suave text-[13px]">{e.texto}</a>
+					<ul class="flex flex-col gap-2.5">{e.hijas?.slice(0, 5).map((h) => <li><a href={h.href} class="text-[17px]">{h.nombre}</a></li>)}</ul>
+				</div>
+				<div class="flex flex-col gap-3.5">
+					<span class="text-[13px]" aria-hidden="true">&nbsp;</span>
+					<ul class="flex flex-col gap-2.5">{e.hijas?.slice(5).map((h) => <li><a href={h.href} class="text-[17px]">{h.nombre}</a></li>)}</ul>
+				</div>
+				<div></div>
+				{e.tarjetas?.map((h) => (
+					<a href={h.href} class="flex flex-col gap-3">
+						<span class="bg-arena block h-[300px] overflow-hidden">{h.imagen && <img src={foto(h.imagen)} alt="" loading="lazy" class="size-full object-cover" />}</span>
+						<span class="flex justify-between text-base"><span>{h.titulo}</span><span aria-hidden="true">→</span></span>
+					</a>
+				))}
+			</div>
+		</div>
+	))}
 </header>
+
+<script>
+	import '../../scripts/menu-tienda';
+</script>

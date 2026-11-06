@@ -7,7 +7,6 @@ import { type Filtros, type Listado as DatosListado, pesos, type Tienda, type Ta
 import { conCambios, type Base, type Parametros } from '../../lib/listado';
 import Grilla from './Grilla.astro';
 import Migas from './Migas.astro';
-import Paginacion from './Paginacion.astro';
 
 interface Props {
   titulo: string;
@@ -17,6 +16,8 @@ interface Props {
   p: Parametros;
   base: Base;
   filtros: Filtros;
+  // Talles, colores y precio de los productos de esta página; si no viene, se usan los de toda la tienda.
+  alcance?: Pick<Filtros, 'talles' | 'colores' | 'precio'>;
   tienda: Tienda;
   // Muestra la lista de categorías en el costado (en las páginas que no son de una categoría).
   mostrarCategorias?: boolean;
@@ -25,8 +26,13 @@ interface Props {
   // Productos para sugerir si no hay resultados.
   sugeridos?: TarjetaDeProducto[];
 }
-const { titulo, subtitulo, migas, datos, p, base, filtros, tienda, mostrarCategorias = false, atajos, sugeridos = [] } = Astro.props;
+const { titulo, subtitulo, migas, datos, p, base, filtros: filtrosTienda, alcance, tienda, mostrarCategorias = false, atajos, sugeridos = [] } = Astro.props;
+// Las categorías son las de toda la tienda; talles, colores y precio, los de esta página.
+const filtros: Filtros = { ...filtrosTienda, ...alcance };
 const { productos, total } = datos;
+// Cada grupo de filtros aparece solo si hay algo para elegir en esta página. El precio no sirve si todo cuesta lo mismo.
+const precioUtil = filtros.precio.max > filtros.precio.min || p.min !== null || p.max !== null;
+const hayOpciones = filtros.talles.length > 0 || filtros.colores.length > 0 || precioUtil || (mostrarCategorias && filtros.categorias.length > 0);
 const ruta = Astro.url.pathname;
 const hayFiltros = p.talles.length > 0 || p.colores.length > 0 || p.min !== null || p.max !== null || !!base.destacado;
 const chips: { texto: string; quitar: string }[] = [];
@@ -40,18 +46,20 @@ if (p.min !== null || p.max !== null) {
 const limpiar = conCambios(Astro.url, { talle: null, color: null, min: null, max: null, orden: null });
 // Parámetros fijos de la página, para que el script pueda calcular cuántos resultados da cada combinación.
 const baseApi = new URLSearchParams(Object.entries({ categoria: base.categoria, coleccion: base.coleccion, q: base.q, oferta: base.oferta ? '1' : undefined, destacado: base.destacado ? '1' : undefined }).filter(([, v]) => v) as [string, string][]).toString();
-const seccion = 'border-linea border-b py-4';
-const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between text-sm font-semibold';
+const seccion = 'border-linea group border-b py-4 lg:relative lg:border-0 lg:py-0';
+// En escritorio cada grupo de filtros es un botón que abre su panel debajo, como en el diseño; en el celular son secciones del panel lateral.
+const panel = 'pt-2 lg:absolute lg:top-full lg:left-0 lg:z-30 lg:mt-1 lg:w-72 lg:border lg:border-linea lg:bg-fondo lg:p-4 lg:shadow-lg';
+const tituloSeccion = "flex min-h-11 cursor-pointer items-center justify-between text-sm font-semibold after:content-['▾'] lg:justify-start lg:gap-1.5 lg:px-4 lg:text-xs lg:font-normal lg:tracking-[0.22em] lg:uppercase";
 ---
 
 <div class="contenedor pt-5 pb-4">
 	<Migas items={migas} />
 	<div class="mt-4 flex flex-wrap items-end justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold md:text-3xl">{titulo}</h1>
+			<h1 class="text-[40px] leading-none md:text-[64px]">{titulo}</h1>
 			{subtitulo && <p class="text-suave mt-1 text-sm">{subtitulo}</p>}
 		</div>
-		<p class="text-suave text-sm" aria-live="polite">{total} {total === 1 ? 'producto' : 'productos'}</p>
+		<p class="text-suave text-sm" aria-live="polite">{total} {total === 1 ? 'prenda' : 'prendas'}</p>
 	</div>
 
 	{atajos && atajos.hijas.length > 0 && (
@@ -63,119 +71,121 @@ const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between
 		</nav>
 	)}
 
-	<div class="border-linea mt-5 flex items-center justify-between gap-3 border-y py-3">
-		<label for="filtros-t" class="boton boton-secundario min-h-11 px-4 lg:hidden"><SlidersHorizontal class="size-4" aria-hidden="true" />Filtrar{chips.length > 0 && ` (${chips.length})`}</label>
-		<span class="text-suave hidden text-sm lg:block">{hayFiltros ? 'Filtros aplicados' : 'Filtrá por talle, color o precio'}</span>
-		<div class="flex items-center gap-2">
-			<label for="orden" class="text-suave hidden text-sm sm:block">Ordenar por</label>
-			<select id="orden" name="orden" form="filtros-form" class="campo min-h-11 w-auto py-0 pr-9 text-sm">
-				<option value="" selected={p.orden === ''}>Más nuevos</option>
+	<div class="border-linea mt-6 flex flex-wrap items-center justify-between gap-x-3 border-y py-2">
+		{hayOpciones && <label for="filtros-t" class="boton boton-secundario min-h-11 px-4 lg:hidden"><SlidersHorizontal class="size-4" aria-hidden="true" />Filtrar{chips.length > 0 && ` (${chips.length})`}</label>}
+		<input type="checkbox" id="filtros-t" class="peer sr-only" aria-label="Abrir o cerrar los filtros" />
+			<form
+				id="filtros-form"
+				method="get"
+				action={ruta}
+				data-filtros
+				data-base={baseApi}
+				class:list={[hayOpciones ? 'fixed inset-y-0 right-0 z-50 flex w-[88%] max-w-sm translate-x-full flex-col bg-fondo transition-transform duration-200 peer-checked:translate-x-0 lg:relative lg:z-30 lg:bg-transparent lg:w-auto lg:max-w-none lg:translate-x-0 lg:flex-row lg:items-center' : 'hidden']}
+			>
+				<div class="border-linea flex h-16 shrink-0 items-center justify-between border-b px-4 lg:hidden">
+					<span class="text-lg font-semibold">Filtrar</span>
+					<label for="filtros-t" class="boton-icono" title="Cerrar filtros"><X class="size-5" aria-hidden="true" /></label>
+				</div>
+
+				<div class="flex-1 overflow-y-auto px-4 pb-4 lg:flex lg:items-center lg:gap-1 lg:overflow-visible lg:px-0 lg:pb-0">
+					{base.q && <input type="hidden" name="q" value={base.q} />}
+					{base.destacado && <input type="hidden" name="destacado" value="1" />}
+
+					{mostrarCategorias && filtros.categorias.length > 0 && (
+						<details class={seccion}>
+							<summary class={tituloSeccion}>Categoría</summary><div class={panel}>
+							<ul class="space-y-1">
+								{filtros.categorias.map((c) => (
+										<li>
+											<a href={`/categoria/${c.slug}`} class="hover:underline flex min-h-11 items-center text-sm font-medium">{c.nombre}</a>
+											{c.hijas.length > 0 && <ul class="border-linea ml-2 border-l pl-3">{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="text-suave hover:text-texto hover:underline flex min-h-11 items-center text-sm">{h.nombre}</a></li>)}</ul>}
+										</li>
+									))}
+							</ul>
+						</div></details>
+					)}
+
+					{filtros.talles.length > 0 && (
+						<details class={seccion}>
+							<summary class={tituloSeccion}>Talle</summary><div class={panel}>
+							<fieldset class="flex flex-wrap gap-2">
+								<legend class="sr-only">Talle</legend>
+								{filtros.talles.map((t) => (
+									<label class="cursor-pointer">
+										<input type="checkbox" name="talle" value={t.id} checked={p.talles.includes(t.id)} class="peer sr-only" />
+										<span class="border-linea rounded-tienda peer-checked:border-primario peer-checked:bg-primario peer-checked:text-primario-texto peer-focus-visible:outline-texto flex h-11 min-w-11 items-center justify-center border px-3 text-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">{t.nombre}</span>
+									</label>
+								))}
+							</fieldset>
+						</div></details>
+					)}
+
+					{filtros.colores.length > 0 && (
+						<details class={seccion}>
+							<summary class={tituloSeccion}>Color</summary><div class={panel}>
+							<fieldset class="grid grid-cols-2 gap-x-2 gap-y-1">
+								<legend class="sr-only">Color</legend>
+								{filtros.colores.map((c) => (
+									<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+										<input type="checkbox" name="color" value={c.id} checked={p.colores.includes(c.id)} class="peer sr-only" />
+										<span class="border-linea peer-checked:ring-texto peer-focus-visible:outline-texto size-6 shrink-0 rounded-full border peer-checked:ring-2 peer-checked:ring-offset-2 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2" style={`background:${c.hex ?? 'transparent'}`}></span>
+										<span class="peer-checked:font-semibold">{c.nombre}</span>
+									</label>
+								))}
+							</fieldset>
+						</div></details>
+					)}
+
+					{precioUtil && (
+					<details class={seccion}>
+						<summary class={tituloSeccion}>Precio</summary><div class={panel}>
+						<div class="flex items-center gap-2">
+							<label class="flex-1"><span class="sr-only">Precio desde, en pesos</span><input name="min" inputmode="numeric" pattern="[0-9]*" placeholder="Desde $" value={p.min ?? ''} class="campo min-h-11 text-sm" /></label>
+							<span class="text-suave" aria-hidden="true">–</span>
+							<label class="flex-1"><span class="sr-only">Precio hasta, en pesos</span><input name="max" inputmode="numeric" pattern="[0-9]*" placeholder="Hasta $" value={p.max ?? ''} class="campo min-h-11 text-sm" /></label>
+						</div>
+						{filtros.precio.max > 0 && <p class="text-suave mt-2 text-xs">De {pesos(filtros.precio.min)} a {pesos(filtros.precio.max)}</p>}
+					</div></details>
+					)}
+				</div>
+
+				<div class="border-linea space-y-2 border-t p-4 lg:hidden">
+					<button class="boton boton-primario w-full lg:hidden" data-aplicar>Aplicar filtros</button>
+					{hayFiltros && <a href={limpiar} class="boton boton-secundario w-full">Limpiar filtros</a>}
+				</div>
+			</form>
+			<label for="filtros-t" class="fixed inset-0 z-40 hidden bg-black/50 peer-checked:block lg:peer-checked:hidden" aria-hidden="true"></label>
+		{chips.length > 0 && (
+			<ul class="flex flex-wrap items-center gap-2 max-lg:w-full max-lg:pb-2" aria-label="Filtros activos">
+				{chips.map((c) => (
+					<li><a href={c.quitar} class="border-texto inline-flex min-h-9 items-center gap-2.5 border px-3.5 text-[13px]" title={`Quitar ${c.texto}`}>{c.texto}<X class="size-3.5" aria-hidden="true" /><span class="sr-only">quitar filtro</span></a></li>
+				))}
+				{chips.length > 1 && <li><a href={limpiar} class="text-suave text-[13px] underline underline-offset-4 hover:no-underline">Limpiar todo</a></li>}
+			</ul>
+		)}
+		<div class="ml-auto flex items-center gap-2">
+			<label for="orden" class="text-suave hidden text-[13px] sm:block">Ordenar</label>
+			<select id="orden" name="orden" form="filtros-form" class="campo min-h-11 w-auto border-0! bg-transparent! py-0 pr-9 text-sm shadow-none ring-0!">
+				<option value="" selected={p.orden === ''}>Lo más nuevo</option>
 				<option value="precio_asc" selected={p.orden === 'precio_asc'}>Menor precio</option>
 				<option value="precio_desc" selected={p.orden === 'precio_desc'}>Mayor precio</option>
 			</select>
 		</div>
 	</div>
 
-	{chips.length > 0 && (
-		<ul class="mt-4 flex flex-wrap items-center gap-2" aria-label="Filtros activos">
-			{chips.map((c) => (
-				<li><a href={c.quitar} class="bg-gris rounded-tienda hover:bg-linea inline-flex min-h-9 items-center gap-1.5 px-3 text-sm" title={`Quitar ${c.texto}`}>{c.texto}<X class="size-3.5" aria-hidden="true" /><span class="sr-only">quitar filtro</span></a></li>
-			))}
-			<li><a href={limpiar} class="text-sm underline underline-offset-4 hover:no-underline">Limpiar todo</a></li>
-		</ul>
-	)}
-
-	<div class="mt-6 lg:grid lg:grid-cols-[250px_1fr] lg:gap-10">
-		<input type="checkbox" id="filtros-t" class="peer sr-only" aria-label="Abrir o cerrar los filtros" />
-		<form
-			id="filtros-form"
-			method="get"
-			action={ruta}
-			data-filtros
-			data-base={baseApi}
-			class="fixed inset-y-0 right-0 z-50 flex w-[88%] max-w-sm translate-x-full flex-col bg-white transition-transform duration-200 peer-checked:translate-x-0 lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0"
-		>
-			<div class="border-linea flex h-16 shrink-0 items-center justify-between border-b px-4 lg:hidden">
-				<span class="text-lg font-semibold">Filtrar</span>
-				<label for="filtros-t" class="boton-icono" title="Cerrar filtros"><X class="size-5" aria-hidden="true" /></label>
-			</div>
-
-			<div class="flex-1 overflow-y-auto px-4 pb-4 lg:px-0 lg:pb-0">
-				{base.q && <input type="hidden" name="q" value={base.q} />}
-				{base.destacado && <input type="hidden" name="destacado" value="1" />}
-
-				{mostrarCategorias && filtros.categorias.length > 0 && (
-					<details open class={seccion}>
-						<summary class={tituloSeccion}>Categoría</summary>
-						<ul class="space-y-1">
-							{filtros.categorias.map((c) => (
-									<li>
-										<a href={`/categoria/${c.slug}`} class="hover:underline flex min-h-11 items-center text-sm font-medium">{c.nombre}</a>
-										{c.hijas.length > 0 && <ul class="border-linea ml-2 border-l pl-3">{c.hijas.map((h) => <li><a href={`/categoria/${h.slug}`} class="text-suave hover:text-texto hover:underline flex min-h-11 items-center text-sm">{h.nombre}</a></li>)}</ul>}
-									</li>
-								))}
-						</ul>
-					</details>
-				)}
-
-				{filtros.talles.length > 0 && (
-					<details open class={seccion}>
-						<summary class={tituloSeccion}>Talle</summary>
-						<fieldset class="flex flex-wrap gap-2">
-							<legend class="sr-only">Talle</legend>
-							{filtros.talles.map((t) => (
-								<label class="cursor-pointer">
-									<input type="checkbox" name="talle" value={t.id} checked={p.talles.includes(t.id)} class="peer sr-only" />
-									<span class="border-linea rounded-tienda peer-checked:border-primario peer-checked:bg-primario peer-checked:text-primario-texto peer-focus-visible:outline-texto flex h-11 min-w-11 items-center justify-center border px-3 text-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">{t.nombre}</span>
-								</label>
-							))}
-						</fieldset>
-					</details>
-				)}
-
-				{filtros.colores.length > 0 && (
-					<details open class={seccion}>
-						<summary class={tituloSeccion}>Color</summary>
-						<fieldset class="grid grid-cols-2 gap-x-2 gap-y-1">
-							<legend class="sr-only">Color</legend>
-							{filtros.colores.map((c) => (
-								<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-									<input type="checkbox" name="color" value={c.id} checked={p.colores.includes(c.id)} class="peer sr-only" />
-									<span class="border-linea peer-checked:ring-texto peer-focus-visible:outline-texto size-6 shrink-0 rounded-full border peer-checked:ring-2 peer-checked:ring-offset-2 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2" style={`background:${c.hex ?? 'transparent'}`}></span>
-									<span class="peer-checked:font-semibold">{c.nombre}</span>
-								</label>
-							))}
-						</fieldset>
-					</details>
-				)}
-
-				<details open class={seccion}>
-					<summary class={tituloSeccion}>Precio</summary>
-					<div class="flex items-center gap-2">
-						<label class="flex-1"><span class="sr-only">Precio desde, en pesos</span><input name="min" inputmode="numeric" pattern="[0-9]*" placeholder="Desde $" value={p.min ?? ''} class="campo min-h-11 text-sm" /></label>
-						<span class="text-suave" aria-hidden="true">–</span>
-						<label class="flex-1"><span class="sr-only">Precio hasta, en pesos</span><input name="max" inputmode="numeric" pattern="[0-9]*" placeholder="Hasta $" value={p.max ?? ''} class="campo min-h-11 text-sm" /></label>
-					</div>
-					{filtros.precio.max > 0 && <p class="text-suave mt-2 text-xs">De {pesos(filtros.precio.min)} a {pesos(filtros.precio.max)}</p>}
-				</details>
-			</div>
-
-			<div class="border-linea space-y-2 border-t p-4 lg:border-0 lg:px-0">
-				<button class="boton boton-primario w-full" data-aplicar>Aplicar filtros</button>
-				{hayFiltros && <a href={limpiar} class="boton boton-secundario w-full">Limpiar filtros</a>}
-			</div>
-		</form>
-		<label for="filtros-t" class="fixed inset-0 z-40 hidden bg-black/50 peer-checked:block lg:peer-checked:hidden" aria-hidden="true"></label>
-
+	<div class="mt-8">
 		<section aria-label="Productos">
 			{productos.length > 0 ? (
 				<>
-					<Grilla productos={productos} tienda={tienda} columnas={3} prioridad={4} />
-					<Paginacion pagina={datos.pagina} total={total} porPagina={datos.porPagina} />
+					<Grilla productos={productos} tienda={tienda} columnas={3} prioridad={4} detalle />
+					<div class="mt-14 flex flex-col items-center gap-4" data-mas>
+						<p class="text-suave text-[13px]" aria-live="polite">Viste <span data-vistas>{Math.min(datos.pagina * datos.porPagina, total)}</span> de {total}</p>
+						{datos.pagina * datos.porPagina < total && <a href={conCambios(Astro.url, { pagina: String(datos.pagina + 1) }, true)} rel="next" data-ver-mas class="boton boton-secundario min-h-[52px] px-12">Ver más</a>}
+					</div>
 				</>
 			) : (
 				<div class="flex flex-col items-center gap-3 px-4 py-16 text-center">
-					<span class="foto-vacia size-16 rounded-full"><Search class="size-7" aria-hidden="true" /></span>
+					<span class="foto-vacia size-16"><Search class="size-7" aria-hidden="true" /></span>
 					<p class="text-lg font-semibold">{base.q ? `No encontramos productos para «${base.q}»` : 'No encontramos productos con estos filtros'}</p>
 					<p class="text-suave text-sm">Probá con otras palabras o sacá algún filtro.</p>
 					{(hayFiltros || p.orden) && <a href={limpiar} class="boton boton-primario mt-2">Limpiar filtros</a>}
@@ -186,7 +196,7 @@ const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between
 
 	{productos.length === 0 && sugeridos.length > 0 && (
 		<section class="mt-12" aria-labelledby="sec-sugeridos">
-			<h2 id="sec-sugeridos" class="mb-5 text-xl font-semibold">Mirá también</h2>
+			<h2 id="sec-sugeridos" class="mb-5 text-xl">Mirá también</h2>
 			<Grilla productos={sugeridos} tienda={tienda} />
 		</section>
 	)}
@@ -201,6 +211,20 @@ const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between
 		const escritorio = matchMedia('(min-width: 1024px)');
 		const orden = document.getElementById('orden') as HTMLSelectElement;
 		let espera: number | undefined;
+
+		// Los grupos de filtros: en escritorio arrancan cerrados y se abre uno por vez (se cierra al tocar afuera o con Escape); en el celular, abiertos.
+		const grupos = [...form.querySelectorAll<HTMLDetailsElement>('details')];
+		for (const g of grupos) g.open = !escritorio.matches;
+		for (const g of grupos)
+			g.addEventListener('toggle', () => {
+				if (g.open && escritorio.matches) for (const o of grupos) if (o !== g) o.open = false;
+			});
+		document.addEventListener('click', (e) => {
+			if (escritorio.matches && !form.contains(e.target as Node)) for (const g of grupos) g.open = false;
+		});
+		document.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape' && escritorio.matches) for (const g of grupos) g.open = false;
+		});
 
 		// La consulta a la API con lo que hay marcado ahora (los precios se escriben en pesos y la API los quiere en centavos).
 		const contar = async () => {
@@ -224,7 +248,7 @@ const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between
 		};
 
 		form.addEventListener('change', (e) => {
-			if ((e.target as HTMLElement).matches('[name=min], [name=max]')) return; // el precio se aplica con el botón o con Enter
+			if (!escritorio.matches && (e.target as HTMLElement).matches('[name=min], [name=max]')) return; // en el celular el precio se aplica con el botón o con Enter; en escritorio, al salir del campo
 			if (escritorio.matches) form.requestSubmit();
 			else {
 				clearTimeout(espera);
@@ -248,6 +272,30 @@ const tituloSeccion = 'flex min-h-11 cursor-pointer items-center justify-between
 		addEventListener('pageshow', () => {
 			for (const campo of form.querySelectorAll<HTMLInputElement>('[name=min], [name=max]')) campo.disabled = false;
 			orden.disabled = false;
+		});
+	}
+
+	// «Ver más»: trae la página siguiente y suma sus prendas sin salir de acá (sin JavaScript es un enlace a la página siguiente).
+	const mas = document.querySelector<HTMLElement>('[data-mas]');
+	const boton = mas?.querySelector<HTMLAnchorElement>('[data-ver-mas]');
+	if (mas && boton) {
+		const lista = document.querySelector('section[aria-label=Productos] ul')!;
+		boton.addEventListener('click', async (e) => {
+			e.preventDefault();
+			boton.setAttribute('aria-busy', 'true');
+			try {
+				const html = await (await fetch(boton.href)).text();
+				const doc = new DOMParser().parseFromString(html, 'text/html');
+				for (const li of doc.querySelectorAll('section[aria-label=Productos] ul > li')) lista.append(document.importNode(li, true));
+				mas.querySelector('[data-vistas]')!.textContent = String(lista.children.length);
+				const siguiente = doc.querySelector<HTMLAnchorElement>('[data-ver-mas]');
+				if (siguiente) boton.href = siguiente.href;
+				else boton.remove();
+			} catch {
+				location.assign(boton.href);
+			} finally {
+				boton.removeAttribute('aria-busy');
+			}
 		});
 	}
 </script>

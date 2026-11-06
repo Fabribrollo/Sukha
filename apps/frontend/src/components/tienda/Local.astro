@@ -1,0 +1,49 @@
+---
+// El local de la portada. Escritorio: texto con enlace a un lado y la foto (o el mapa) al otro. Celular: título, texto, el mapa
+// y dos botones (por ejemplo «Cómo llegar» y «WhatsApp»). Editable en /admin/portada.
+interface Props {
+  imagen: string;
+  etiqueta?: string;
+  titulo?: string;
+  parrafo?: string;
+  boton?: string;
+  enlace?: string;
+  boton2?: string;
+  enlace2?: string;
+  // Mapa: si hay lugar, se dibuja un mapa minimalista en lugar de la foto (ver scripts/mapa-local.ts).
+  lat?: number | null;
+  lng?: number | null;
+  zoom?: number;
+  etiquetaMapa?: string;
+}
+const { imagen, etiqueta, titulo, parrafo, boton, enlace, boton2, enlace2, lat, lng, zoom = 16, etiquetaMapa } = Astro.props;
+const conMapa = typeof lat === 'number' && typeof lng === 'number';
+const externo = (e?: string) => Boolean(e?.startsWith('https://'));
+const botones = [boton && enlace ? { texto: boton, href: enlace } : null, boton2 && enlace2 ? { texto: boton2, href: enlace2 } : null].filter(Boolean) as { texto: string; href: string }[];
+---
+
+<section class="contenedor mt-16 grid gap-6 md:mt-[120px] md:grid-cols-2 md:items-center md:gap-24">
+	<div class="flex flex-col items-start gap-[18px] md:gap-5">
+		{etiqueta && <p data-campo="etiqueta" class="text-[11px] font-medium tracking-[0.26em] uppercase md:text-xs md:tracking-[0.28em]">{etiqueta}</p>}
+		{titulo && <h2 data-campo="titulo" class="text-[40px] leading-[0.95] md:text-[56px] md:leading-[1.05]">{titulo}</h2>}
+		{parrafo && <p data-campo="parrafo" class="text-suave text-base leading-relaxed whitespace-pre-line md:text-[17px] md:leading-[1.7]">{parrafo}</p>}
+		{boton && enlace && <a data-campo="boton" data-sufijo=" →" href={enlace} target={externo(enlace) ? '_blank' : undefined} rel={externo(enlace) ? 'noopener' : undefined} class="border-texto hidden border-b pb-1 text-xs tracking-[0.2em] uppercase md:inline-flex">{boton} →</a>}
+	</div>
+	<div class="flex flex-col gap-1.5">
+		<div class="foto-vacia bg-arena! aspect-[350/320] overflow-hidden md:aspect-[3/2]">
+			{conMapa && <div data-mapa data-lat={lat} data-lng={lng} data-zoom={zoom} data-etiqueta={etiquetaMapa || undefined} data-enlace={enlace?.startsWith('https://') ? enlace : undefined} class="size-full" role="img" aria-label={`Mapa: ${etiquetaMapa || titulo || 'ubicación del local'}`}></div>}
+			{!conMapa && !imagen && <span class="text-suave flex size-full items-end p-4 text-[11px] tracking-[0.2em] uppercase">[Ubicación pendiente]</span>}
+			{!conMapa && imagen && <img data-campo-img src={`/api/imagenes/${imagen}/grande.webp`} alt={titulo ?? ''} loading="lazy" class="size-full object-cover" />}
+		</div>
+		{!conMapa && imagen && <p class="text-suave text-[11px] md:hidden">© OpenStreetMap</p>}
+	</div>
+	{botones.length > 0 && (
+		<div class="grid grid-cols-2 gap-2 md:hidden">
+			{botones.map((b, i) => <a href={b.href} target={externo(b.href) ? '_blank' : undefined} rel={externo(b.href) ? 'noopener' : undefined} class={`flex min-h-[54px] items-center justify-center text-[15px] font-medium ${i === 0 ? 'ring-texto ring-1 ring-inset' : 'bg-primario text-primario-texto'} ${botones.length === 1 ? 'col-span-2' : ''}`}>{b.texto}</a>)}
+		</div>
+	)}
+</section>
+
+<script>
+	import '../../scripts/mapa-local';
+</script>

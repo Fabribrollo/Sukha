@@ -12,6 +12,9 @@ export const categoria = sqliteTable("categoria", {
 	orden: integer().default(0).notNull(),
 	activa: integer().default(1).notNull(),
 	padreId: integer("padre_id").references((): AnySQLiteColumn => categoria.id),
+	claveImagen: text("clave_imagen"),
+	seoTitulo: text("seo_titulo"),
+	seoDescripcion: text("seo_descripcion"),
 },
 (table) => [
 ]);
@@ -21,6 +24,8 @@ export const coleccion = sqliteTable("coleccion", {
 	nombre: text().notNull(),
 	slug: text().notNull(),
 	activa: integer().default(1).notNull(),
+	seoTitulo: text("seo_titulo"),
+	seoDescripcion: text("seo_descripcion"),
 },
 (table) => [
 ]);
@@ -31,7 +36,14 @@ export const producto = sqliteTable("producto", {
 	nombre: text().notNull(),
 	slug: text().notNull(),
 	descripcion: text(),
+	// Legado: lo reemplaza la lista de materiales (producto_material); queda como respaldo y ya no se usa.
 	material: text(),
+	// Marca o distribuidor: solo del panel, nunca en la API pública.
+	marcaId: integer("marca_id").references(() => marca.id),
+	// Para buscadores y redes; vacíos se arman solos (nombre, descripción, primera foto).
+	seoTitulo: text("seo_titulo"),
+	seoDescripcion: text("seo_descripcion"),
+	seoImagen: text("seo_imagen"),
 	cuidados: text(),
 	precioCentavos: integer("precio_centavos").notNull(),
 	precioOfertaCentavos: integer("precio_oferta_centavos"),
@@ -43,6 +55,24 @@ export const producto = sqliteTable("producto", {
 },
 (table) => [
 	index("producto_categoria_estado").on(table.categoriaId, table.estado),
+]);
+
+export const marca = sqliteTable("marca", {
+	id: integer().primaryKey(),
+	nombre: text().notNull(),
+});
+
+export const material = sqliteTable("material", {
+	id: integer().primaryKey(),
+	nombre: text().notNull(),
+});
+
+export const productoMaterial = sqliteTable("producto_material", {
+	productoId: integer("producto_id").notNull().references(() => producto.id, { onDelete: "cascade" } ),
+	materialId: integer("material_id").notNull().references(() => material.id),
+},
+(table) => [
+	primaryKey({ columns: [table.productoId, table.materialId], name: "producto_material_pk"})
 ]);
 
 export const productoColeccion = sqliteTable("producto_coleccion", {
@@ -66,6 +96,7 @@ export const color = sqliteTable("color", {
 	id: integer().primaryKey(),
 	nombre: text().notNull(),
 	hex: text(),
+	orden: integer().default(0).notNull(),
 },
 (table) => [
 ]);
@@ -94,6 +125,15 @@ export const imagen = sqliteTable("imagen", {
 (table) => [
 	index("imagen_producto").on(table.productoId, table.orden),
 ]);
+
+export const redireccion = sqliteTable("redireccion", {
+	id: integer().primaryKey(),
+	desde: text().notNull().unique(),
+	hacia: text().notNull(),
+	tipo: integer().default(301).notNull(),
+	automatica: integer().default(0).notNull(),
+	creadoEn: text("creado_en").default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`).notNull(),
+});
 
 export const banner = sqliteTable("banner", {
 	id: integer().primaryKey(),
@@ -144,6 +184,19 @@ export const cupon = sqliteTable("cupon", {
 (table) => [
 ]);
 
+export const promocion = sqliteTable("promocion", {
+	id: integer().primaryKey(),
+	nombre: text().notNull(),
+	tipo: text({ enum: ["liquidacion", "2x1", "3x2"] }).notNull(),
+	porcentaje: integer(),
+	categoriaId: integer("categoria_id").references(() => categoria.id, { onDelete: "cascade" } ),
+	coleccionId: integer("coleccion_id").references(() => coleccion.id, { onDelete: "cascade" } ),
+	desde: text(),
+	hasta: text(),
+	activa: integer().default(1).notNull(),
+	creadoEn: text("creado_en").default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`).notNull(),
+});
+
 export const clienta = sqliteTable("clienta", {
 	id: integer().primaryKey(),
 	email: text().notNull(),
@@ -188,8 +241,11 @@ export const pedido = sqliteTable("pedido", {
 	cuit: text(),
 	condicionIva: text("condicion_iva"),
 	facturaNumero: text("factura_numero"),
+	notaClienta: text("nota_clienta"),
+	notaInterna: text("nota_interna"),
 	reservaVenceEn: text("reserva_vence_en"),
 	ipHash: text("ip_hash"),
+	canal: text().default("web").notNull(),
 	creadoEn: text("creado_en").default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`).notNull(),
 	actualizadoEn: text("actualizado_en").default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`).notNull(),
 },
@@ -338,3 +394,20 @@ export const configuracion = sqliteTable("configuracion", {
 (table) => [
 ]);
 
+
+export const cacheExterna = sqliteTable("cache_externa", {
+	clave: text().primaryKey().notNull(),
+	valor: text().notNull(),
+	venceEn: text("vence_en").notNull(),
+}, (table) => [
+	index("cache_externa_vence_en").on(table.venceEn),
+]);
+
+export const escalonEnvio = sqliteTable("escalon_envio", {
+	zonaEnvioId: integer("zona_envio_id").notNull().references(() => zonaEnvio.id, { onDelete: "cascade" } ),
+	hastaGramos: integer("hasta_gramos").notNull(),
+	precioCentavos: integer("precio_centavos").notNull(),
+},
+(table) => [
+	primaryKey({ columns: [table.zonaEnvioId, table.hastaGramos], name: "escalon_envio_pk"})
+]);

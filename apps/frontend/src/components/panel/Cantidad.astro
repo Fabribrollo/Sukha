@@ -1,0 +1,6 @@
+---
+// Número chico al lado del nombre de una pestaña de estado («Por despachar 3»). Sin n o en cero, no se muestra.
+const { n } = Astro.props as { n?: number };
+---
+
+{n ? <span class="ml-1.5 text-xs font-normal text-gray-400 tabular-nums">{n}</span> : null}

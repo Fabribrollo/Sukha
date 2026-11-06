@@ -1,0 +1,34 @@
+---
+// Campaña de la portada: foto a todo el ancho con etiqueta, título y botón encima. Editable en /admin/portada.
+// Un velo parejo sobre la foto (sin degradé) le da contraste al texto: tinta bajo el texto claro, papel bajo el oscuro.
+interface Props {
+  imagen: string;
+  etiqueta?: string;
+  titulo?: string;
+  boton?: string;
+  enlace?: string;
+  tono?: 'oscuro' | 'claro';
+}
+const { imagen, etiqueta, titulo, boton, enlace, tono = 'oscuro' } = Astro.props;
+const claro = tono === 'claro';
+---
+
+<section class:list={['bg-gris relative flex min-h-[70vh] items-end md:min-h-[80vh]', claro && 'text-primario-texto']}>
+	{
+		imagen && (
+			<>
+				{/* En el celular, la foto mediana (1080 px) en lugar de la grande. */}
+				<picture>
+					<source data-campo-img media="(max-width: 767px)" srcset={`/api/imagenes/${imagen}/mediano.webp`} />
+					<img data-campo-img src={`/api/imagenes/${imagen}/grande.webp`} alt="" class="absolute inset-0 size-full object-cover" fetchpriority="high" />
+				</picture>
+				<div aria-hidden="true" class:list={['absolute inset-0', claro ? 'bg-texto/35' : 'bg-gris/40']} />
+			</>
+		)
+	}
+	<div class="contenedor relative flex flex-col items-start gap-4 pb-12 md:pb-16">
+		{etiqueta && <p data-campo="etiqueta" class="text-xs font-medium tracking-[0.28em] uppercase">{etiqueta}</p>}
+		{titulo && <h1 data-campo="titulo" class="max-w-3xl text-4xl leading-none md:text-7xl">{titulo}</h1>}
+		{boton && enlace && <a data-campo="boton" href={enlace} class:list={['boton', claro ? 'bg-gris text-texto hover:opacity-90' : 'boton-primario']}>{boton}</a>}
+	</div>
+</section>

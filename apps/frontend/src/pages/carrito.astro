@@ -10,17 +10,17 @@ export const prerender = false;
 const { tienda } = await datosDeLaTienda(Astro.request);
 const nuevos = await productosNuevos(Astro.request);
 // A la isla solo le pasamos lo que usa: no hace falta mandar al navegador los textos de la tienda.
-const { retiro, maxUnidadesPorPedido, descuentoTransferenciaPorcentaje } = tienda;
+const { retiro, maxUnidadesPorPedido, descuentoTransferenciaPorcentaje, whatsapp, envioGratisDesdeCentavos } = tienda;
 ---
 
 <Tienda titulo="Tu carrito" noindex>
 	<div class="contenedor py-8 md:py-10">
-		<h1 class="mb-6 text-2xl font-semibold md:text-3xl">Tu carrito</h1>
-		<CarritoPagina client:only="preact" tienda={{ retiro, maxUnidadesPorPedido, descuentoTransferenciaPorcentaje }} />
+		<h1 class="mb-6 text-2xl md:text-3xl">Tu carrito</h1>
+		<CarritoPagina client:only="preact" tienda={{ retiro, maxUnidadesPorPedido, descuentoTransferenciaPorcentaje, whatsapp, envioGratisDesdeCentavos }} />
 	</div>
 	{nuevos.length > 0 && (
 		<section class="contenedor mt-6" aria-labelledby="sec-nuevos">
-			<h2 id="sec-nuevos" class="mb-5 text-xl font-semibold">Mirá lo nuevo</h2>
+			<h2 id="sec-nuevos" class="mb-5 text-xl">Mirá lo nuevo</h2>
 			<ul class="fila-deslizable">
 				{nuevos.map((p) => <li class="fila-deslizable-item"><TarjetaProducto producto={p} tienda={tienda} /></li>)}
 			</ul>

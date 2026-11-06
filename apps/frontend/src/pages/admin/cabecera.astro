@@ -1,0 +1,34 @@
+---
+// Menú de la cabecera de la tienda: qué entradas se ven, en qué orden, con sus paneles expandibles, fotos y versión celular.
+// Todo se arma en el navegador (scripts/cabecera.ts) y se guarda de una vez con «Guardar»; la tienda lo toma en menos de un minuto.
+import { LayoutPanelTop, RotateCcw, Save } from '@lucide/astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Panel from '../../layouts/Panel.astro';
+
+export const prerender = false;
+---
+
+<Panel titulo="Cabecera">
+	<div class="max-w-4xl space-y-5">
+		<Tarjeta titulo="Menú de la cabecera">
+			<LayoutPanelTop slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
+			<p slot="acciones" data-estado role="status" class="text-theme-xs text-gray-500"></p>
+			<p class="text-theme-sm mb-4 text-gray-500">Elegí qué se ve en el menú, en qué orden y en qué pantalla (escritorio y celular). Las categorías y colecciones con subcategorías abren un panel con fotos.</p>
+			<div id="editor" class="space-y-3" aria-live="polite"><p class="text-theme-sm text-gray-500">Cargando…</p></div>
+			<div id="agregar" class="mt-4 flex flex-wrap gap-2"></div>
+		</Tarjeta>
+		<Tarjeta titulo="Menú del celular · tarjetas de la pantalla principal">
+			<p class="text-theme-sm mb-4 text-gray-500">Hasta dos tarjetas con foto debajo de la lista del menú del celular. Si no cargás ninguna, se usan las primeras subcategorías que tengan foto.</p>
+			<div id="tarjetas-movil" class="space-y-3"></div>
+		</Tarjeta>
+	</div>
+	<div class="shadow-theme-lg fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white px-4 py-3 sm:px-6 lg:left-[280px]">
+		<div class="mx-auto flex max-w-4xl items-center gap-2">
+			<p data-aviso class="min-w-0 flex-1 text-sm text-gray-600" role="status"></p>
+			<button type="button" data-restaurar class="btn btn-secundario"><RotateCcw class="size-4" aria-hidden="true" /><span data-restaurar-texto>Restaurar el original</span></button>
+			<button type="button" data-guardar class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+		</div>
+	</div>
+	<div class="h-16" aria-hidden="true"></div>
+</Panel>
+<script src="../../scripts/cabecera.ts"></script>

@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, isNull, like, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { type Db, TAMANOS_FOTO } from '../config';
-import { categoria, coleccion, color, imagen, producto, productoColeccion, talle, variante } from '../db/schema';
+import { categoria, coleccion, color, imagen, marca, material, producto, productoColeccion, productoMaterial, talle, variante } from '../db/schema';
 import { ErrorApp, guardando, noEncontrado, violaCheck } from '../utils/errores';
 import { ahora } from '../utils/http';
 import { aSlug } from '../utils/texto';
+import { redirigirSlug } from './redirecciones.service';
 import type {
   EdicionCategoria,
   EdicionColeccion,
@@ -14,6 +15,7 @@ import type {
   NuevaCategoria,
   NuevaColeccion,
   NuevaVariante,
+  NuevoLote,
   NuevoProducto,
 } from '../validations/catalogo.validation';
 
@@ -21,7 +23,12 @@ import type {
 
 const guia = (g: unknown) => (g === undefined ? undefined : g === null ? null : JSON.stringify(g));
 
-export const listarCategorias = (db: Db) => db.select().from(categoria).orderBy(categoria.orden, categoria.nombre);
+// Con la cantidad de productos de cada una, para el panel.
+export const listarCategorias = (db: Db) =>
+  db
+    .select({ ...getTableColumns(categoria), productos: sql<number>`(SELECT count(*) FROM producto p WHERE p.categoria_id = categoria.id)` })
+    .from(categoria)
+    .orderBy(categoria.orden, categoria.nombre);
 
 // Una categoría puede colgar de una principal, nunca de otra subcategoría ni de sí misma,
 // y una que ya tiene subcategorías no puede pasar a ser subcategoría.
@@ -69,12 +76,15 @@ export async function ordenarCategorias(db: Db, ids: number[]) {
 export async function editarCategoria(db: Db, id: number, d: z.infer<typeof EdicionCategoria>) {
   await validarPadre(db, id, d.padreId);
   return guardando('una categoría', async () => {
+    const [antes] = await db.select({ slug: categoria.slug }).from(categoria).where(eq(categoria.id, id));
     const [fila] = await db
       .update(categoria)
       .set({ ...d, guiaTalles: guia(d.guiaTalles) })
       .where(eq(categoria.id, id))
       .returning();
     if (!fila) throw noEncontrado('la categoría');
+    // Si cambió la dirección, la vieja manda a la nueva.
+    if (antes && antes.slug !== fila.slug) await redirigirSlug(db, `/categoria/${antes.slug}`, `/categoria/${fila.slug}`);
     return fila;
   });
 }
@@ -108,6 +118,28 @@ export async function quitarProductoDeColeccion(db: Db, coleccionId: number, pro
   return { ok: true };
 }
 
+// Una categoría se borra solo si quedó vacía: con productos o subcategorías adentro, primero hay que pasarlos a otra (los pedidos viejos los referencian).
+export async function verificarBorrarCategoria(db: Db, id: number) {
+  const [fila] = await db.select({ id: categoria.id }).from(categoria).where(eq(categoria.id, id));
+  if (!fila) throw noEncontrado('la categoría');
+  const [{ productos }] = await db.select({ productos: sql<number>`count(*)` }).from(producto).where(eq(producto.categoriaId, id));
+  const [{ hijas }] = await db.select({ hijas: sql<number>`count(*)` }).from(categoria).where(eq(categoria.padreId, id));
+  if (productos > 0) throw new ErrorApp(409, `Tiene ${productos} ${productos === 1 ? 'producto' : 'productos'}: pasalos a otra categoría antes de borrarla.`);
+  if (hijas > 0) throw new ErrorApp(409, `Tiene ${hijas} ${hijas === 1 ? 'subcategoría' : 'subcategorías'}: borralas o movelas antes de borrarla.`);
+}
+export async function eliminarCategoria(db: Db, id: number) {
+  await verificarBorrarCategoria(db, id);
+  await db.delete(categoria).where(eq(categoria.id, id));
+  return { ok: true };
+}
+
+// Borrar una colección solo la deshace: sus prendas siguen en la tienda (y se van con ella las promociones que apuntaban a esa colección).
+export async function eliminarColeccion(db: Db, id: number) {
+  const [fila] = await db.delete(coleccion).where(eq(coleccion.id, id)).returning({ id: coleccion.id });
+  if (!fila) throw noEncontrado('la colección');
+  return { ok: true };
+}
+
 export function crearColeccion(db: Db, d: z.infer<typeof NuevaColeccion>) {
   return guardando('una colección', async () => {
     const [fila] = await db.insert(coleccion).values({ ...d, slug: d.slug ?? aSlug(d.nombre) }).returning();
@@ -117,15 +149,17 @@ export function crearColeccion(db: Db, d: z.infer<typeof NuevaColeccion>) {
 
 export function editarColeccion(db: Db, id: number, d: z.infer<typeof EdicionColeccion>) {
   return guardando('una colección', async () => {
+    const [antes] = await db.select({ slug: coleccion.slug }).from(coleccion).where(eq(coleccion.id, id));
     const [fila] = await db.update(coleccion).set(d).where(eq(coleccion.id, id)).returning();
     if (!fila) throw noEncontrado('la colección');
+    if (antes && antes.slug !== fila.slug) await redirigirSlug(db, `/coleccion/${antes.slug}`, `/coleccion/${fila.slug}`);
     return fila;
   });
 }
 
 // ───────────── Productos ─────────────
 
-export function listarProductos(db: Db, filtro: { estado?: string; q?: string }) {
+export function listarProductos(db: Db, filtro: { estado?: string; q?: string; marcaId?: number }) {
   return db
     .select({
       id: producto.id,
@@ -135,14 +169,18 @@ export function listarProductos(db: Db, filtro: { estado?: string; q?: string })
       precioCentavos: producto.precioCentavos,
       precioOfertaCentavos: producto.precioOfertaCentavos,
       categoria: categoria.nombre,
+      marca: marca.nombre,
+      marcaId: producto.marcaId,
       stock: sql<number>`(SELECT coalesce(sum(stock), 0) FROM variante WHERE producto_id = ${producto.id} AND activa = 1)`,
       foto: sql<string | null>`(SELECT clave FROM imagen WHERE producto_id = ${producto.id} ORDER BY orden, id LIMIT 1)`,
     })
     .from(producto)
     .innerJoin(categoria, eq(categoria.id, producto.categoriaId))
+    .leftJoin(marca, eq(marca.id, producto.marcaId))
     .where(
       and(
         filtro.estado ? eq(producto.estado, filtro.estado) : undefined,
+        filtro.marcaId ? eq(producto.marcaId, filtro.marcaId) : undefined,
         filtro.q ? like(producto.nombre, `%${filtro.q}%`) : undefined,
       ),
     )
@@ -150,7 +188,7 @@ export function listarProductos(db: Db, filtro: { estado?: string; q?: string })
 }
 
 export async function obtenerProducto(db: Db, id: number) {
-  const [[fila], variantes, imagenes, colecciones] = await db.batch([
+  const [[fila], variantes, imagenes, colecciones, materiales] = await db.batch([
     db.select().from(producto).where(eq(producto.id, id)),
     db
       .select({
@@ -168,18 +206,25 @@ export async function obtenerProducto(db: Db, id: number) {
       .leftJoin(talle, eq(talle.id, variante.talleId))
       .leftJoin(color, eq(color.id, variante.colorId))
       .where(eq(variante.productoId, id))
-      .orderBy(color.nombre, talle.orden),
+      .orderBy(color.orden, color.nombre, talle.orden),
     db.select().from(imagen).where(eq(imagen.productoId, id)).orderBy(imagen.orden, imagen.id),
     db.select({ id: productoColeccion.coleccionId }).from(productoColeccion).where(eq(productoColeccion.productoId, id)),
+    db.select({ id: productoMaterial.materialId }).from(productoMaterial).where(eq(productoMaterial.productoId, id)),
   ]);
   if (!fila) throw noEncontrado('el producto');
-  return { ...fila, variantes, imagenes, coleccionIds: colecciones.map((c) => c.id) };
+  return { ...fila, variantes, imagenes, coleccionIds: colecciones.map((c) => c.id), materialIds: materiales.map((m) => m.id) };
 }
 
 // Reemplaza las colecciones del producto por las indicadas.
 const sentenciasColecciones = (db: Db, productoId: number, ids: number[]) => [
   db.delete(productoColeccion).where(eq(productoColeccion.productoId, productoId)),
   ...ids.map((coleccionId) => db.insert(productoColeccion).values({ productoId, coleccionId })),
+];
+
+// Reemplaza los materiales del producto por los indicados.
+const sentenciasMateriales = (db: Db, productoId: number, ids: number[]) => [
+  db.delete(productoMaterial).where(eq(productoMaterial.productoId, productoId)),
+  ...[...new Set(ids)].map((materialId) => db.insert(productoMaterial).values({ productoId, materialId })),
 ];
 
 // Si el slug ya está tomado se le agrega un sufijo, así el alta no falla por el nombre repetido.
@@ -190,12 +235,12 @@ async function slugLibre(db: Db, base: string) {
 
 export function crearProducto(db: Db, d: z.infer<typeof NuevoProducto>) {
   return guardando('un producto', async () => {
-    const { coleccionIds = [], ...campos } = d;
+    const { coleccionIds = [], materialIds = [], ...campos } = d;
     const [fila] = await db
       .insert(producto)
       .values({ ...campos, slug: d.slug ?? (await slugLibre(db, aSlug(d.nombre))) })
       .returning();
-    if (coleccionIds.length) await db.batch(sentenciasColecciones(db, fila.id, coleccionIds) as [any, ...any[]]);
+    if (coleccionIds.length || materialIds.length) await db.batch([...sentenciasColecciones(db, fila.id, coleccionIds), ...sentenciasMateriales(db, fila.id, materialIds)] as [any, ...any[]]);
     return obtenerProducto(db, fila.id);
   });
 }
@@ -218,7 +263,13 @@ async function verificarPublicable(db: Db, id: number) {
 export function editarProducto(db: Db, id: number, d: z.infer<typeof EdicionProducto>) {
   return guardando('un producto', async () => {
     if (d.estado === 'publicado') await verificarPublicable(db, id);
-    const { coleccionIds, ...campos } = d;
+    // La foto para compartir tiene que ser una de las fotos de este producto.
+    if (d.seoImagen) {
+      const [propia] = await db.select({ id: imagen.id }).from(imagen).where(and(eq(imagen.productoId, id), eq(imagen.clave, d.seoImagen)));
+      if (!propia) throw new ErrorApp(400, 'La foto para compartir tiene que ser una de las fotos del producto.');
+    }
+    const [antes] = await db.select({ slug: producto.slug }).from(producto).where(eq(producto.id, id));
+    const { coleccionIds, materialIds, ...campos } = d;
     try {
       const [fila] = await db
         .update(producto)
@@ -232,14 +283,63 @@ export function editarProducto(db: Db, id: number, d: z.infer<typeof EdicionProd
       throw e;
     }
     if (coleccionIds) await db.batch(sentenciasColecciones(db, id, coleccionIds) as [any, ...any[]]);
+    if (materialIds) await db.batch(sentenciasMateriales(db, id, materialIds) as [any, ...any[]]);
+    if (antes && d.slug && antes.slug !== d.slug) await redirigirSlug(db, `/producto/${antes.slug}`, `/producto/${d.slug}`);
     return obtenerProducto(db, id);
   });
+}
+
+// Carga rápida: crea varios productos con sus variantes y su stock inicial en un solo lote de D1 (o se crean todos o ninguno).
+// Nacen como borrador; las fotos se suben después, producto por producto. Como las variantes se escriben antes de conocer
+// el id del producto, se enlazan por el slug (que es único).
+export async function crearProductosEnLote(d1: D1Database, adminId: number, lote: z.infer<typeof NuevoLote>) {
+  const usados = new Set(((await d1.prepare('SELECT slug FROM producto').all()).results as { slug: string }[]).map((f) => f.slug));
+  const slugs = lote.productos.map((p) => {
+    const base = aSlug(p.nombre) || 'producto';
+    let slug = base;
+    for (let n = 2; usados.has(slug); n++) slug = `${base}-${n}`;
+    usados.add(slug);
+    return slug;
+  });
+
+  const sentencias: D1PreparedStatement[] = [];
+  lote.productos.forEach((p, i) => {
+    const slug = slugs[i];
+    sentencias.push(
+      d1
+        .prepare("INSERT INTO producto (categoria_id, nombre, slug, marca_id, precio_centavos, peso_gramos, estado) VALUES (?, ?, ?, ?, ?, ?, 'borrador')")
+        .bind(p.categoriaId, p.nombre, slug, p.marcaId ?? null, p.precioCentavos, p.pesoGramos ?? null),
+    );
+    for (const materialId of new Set(p.materialIds ?? [])) {
+      sentencias.push(d1.prepare('INSERT INTO producto_material (producto_id, material_id) SELECT id, ? FROM producto WHERE slug = ?').bind(materialId, slug));
+    }
+    for (const coleccionId of new Set(p.coleccionIds ?? [])) {
+      sentencias.push(d1.prepare('INSERT INTO producto_coleccion (producto_id, coleccion_id) SELECT id, ? FROM producto WHERE slug = ?').bind(coleccionId, slug));
+    }
+    for (const v of p.variantes) {
+      const sku = `${slug}-T${v.talleId ?? 0}-C${v.colorId ?? 0}`.toUpperCase();
+      sentencias.push(
+        d1.prepare('INSERT INTO variante (producto_id, talle_id, color_id, sku, stock) SELECT id, ?, ?, ?, ? FROM producto WHERE slug = ?').bind(v.talleId ?? null, v.colorId ?? null, sku, v.stock, slug),
+      );
+      if (v.stock > 0) {
+        sentencias.push(
+          d1
+            .prepare("INSERT INTO movimiento_stock (variante_id, admin_id, tipo, cantidad, nota) SELECT v.id, ?, 'carga', ?, 'Stock inicial' FROM variante v JOIN producto p ON p.id = v.producto_id WHERE p.slug = ? AND v.sku = ?")
+            .bind(adminId, v.stock, slug, sku),
+        );
+      }
+    }
+  });
+  await guardando('los productos', () => d1.batch(sentencias));
+
+  const filas = (await d1.prepare(`SELECT id, slug FROM producto WHERE slug IN (${slugs.map(() => '?').join(',')})`).bind(...slugs).all()).results as { id: number; slug: string }[];
+  return { productos: slugs.map((slug) => ({ id: filas.find((f) => f.slug === slug)!.id, slug })) };
 }
 
 // Copia los datos y las variantes (sin stock ni fotos) a un borrador nuevo.
 export async function duplicarProducto(db: Db, id: number) {
   const original = await obtenerProducto(db, id);
-  const { id: _, variantes, imagenes, coleccionIds, creadoEn, actualizadoEn, ...campos } = original;
+  const { id: _, variantes, imagenes, coleccionIds, materialIds, creadoEn, actualizadoEn, ...campos } = original;
   const [copia] = await db
     .insert(producto)
     .values({
@@ -251,6 +351,7 @@ export async function duplicarProducto(db: Db, id: number) {
     .returning();
   const sentencias = [
     ...sentenciasColecciones(db, copia.id, coleccionIds),
+    ...sentenciasMateriales(db, copia.id, materialIds),
     ...variantes.map((v) =>
       db.insert(variante).values({ productoId: copia.id, talleId: v.talleId, colorId: v.colorId, sku: `${v.sku}-C${copia.id}` }),
     ),
@@ -358,12 +459,11 @@ export async function eliminarProducto(d1: D1Database, kv: KVNamespace, id: numb
   return 'borrado';
 }
 
-// Materiales y cuidados ya cargados en otros productos, para ofrecerlos en el panel sin tener que reescribirlos.
+// Cuidados ya cargados en otros productos, para ofrecerlos en el panel sin tener que reescribirlos.
 export async function sugerencias(d1: D1Database) {
-  const [materiales, cuidados] = await d1.batch([
-    d1.prepare("SELECT DISTINCT material AS valor FROM producto WHERE material IS NOT NULL AND material <> '' ORDER BY material LIMIT 200"),
+  const [cuidados] = await d1.batch([
     d1.prepare("SELECT DISTINCT cuidados AS valor FROM producto WHERE cuidados IS NOT NULL AND cuidados <> '' ORDER BY cuidados LIMIT 200"),
   ]);
   const valores = (r: D1Result) => (r.results as { valor: string }[]).map((f) => f.valor);
-  return { materiales: valores(materiales), cuidados: valores(cuidados) };
+  return { cuidados: valores(cuidados) };
 }

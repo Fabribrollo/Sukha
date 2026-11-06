@@ -1,7 +1,7 @@
 ---
 // Tarjeta de producto: se usa en la portada, los listados, los relacionados y el 404.
 import { ImageOff } from '@lucide/astro';
-import { conTransferencia, cuota, pesos, porcentajeDescuento, precioFinal, srcsetFoto, urlFoto, type Tienda, type TarjetaDeProducto } from '../../lib/formato';
+import { conTransferencia, etiquetasDe, pesos, precioFinal, srcsetFoto, urlFoto, type Tienda, type TarjetaDeProducto } from '../../lib/formato';
 
 interface Props {
   producto: TarjetaDeProducto;
@@ -10,13 +10,17 @@ interface Props {
   prioridad?: boolean;
   // Cuánto ocupa la tarjeta en pantalla, para que el navegador elija el tamaño de foto adecuado.
   sizes?: string;
+  // En los listados la tarjeta suma los puntitos de color y el precio con transferencia (diseño de Categoría); en el resto va solo nombre y precio.
+  detalle?: boolean;
+  // La línea «con transferencia» sin los puntitos de color, solo en escritorio (portada).
+  transferenciaEscritorio?: boolean;
 }
-const { producto: p, tienda, prioridad = false, sizes = '(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw' } = Astro.props;
-const descuento = porcentajeDescuento(p);
+const { producto: p, tienda, prioridad = false, sizes = '(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw', detalle = false, transferenciaEscritorio = false } = Astro.props;
 const cobrado = precioFinal(p);
-const transferencia = conTransferencia(cobrado, tienda.descuentoTransferenciaPorcentaje);
-const cuotas = cuota(cobrado, tienda.cuotasSinInteres);
 const agotado = !p.disponible;
+const etiquetas = etiquetasDe(p, tienda.ultimasUnidadesUmbral);
+const transferencia = agotado || !(detalle || transferenciaEscritorio) ? null : conTransferencia(cobrado, tienda.descuentoTransferenciaPorcentaje);
+const colores = detalle ? (p.colores ?? '').split(',').filter(Boolean) : [];
 ---
 
 <article class="group relative">
@@ -36,17 +40,23 @@ const agotado = !p.disponible;
 			) : (
 				<ImageOff class="size-8" aria-label="Sin foto" />
 			)}
-			<div class="absolute top-2 left-2 flex flex-col items-start gap-1">
-				{descuento !== null && !agotado && <span class="insignia bg-oferta text-white">-{descuento}%</span>}
-				{agotado && <span class="insignia text-suave border-linea border bg-white">Sin stock</span>}
-			</div>
+			{etiquetas.length > 0 && (
+				<ul class="absolute top-2 left-2 flex flex-col items-start gap-1">
+					{etiquetas.map((e) => <li class="bg-fondo text-texto px-1.5 py-0.5 text-[11px] leading-4 tracking-[0.08em] uppercase">{e}</li>)}
+				</ul>
+			)}
 		</div>
-		<h3 class="mt-3 line-clamp-2 min-h-10 text-sm leading-5">{p.nombre}</h3>
-		<p class="mt-1 flex flex-wrap items-baseline gap-x-2">
-			<span class:list={['text-base font-semibold', agotado && 'text-suave']}>{pesos(cobrado)}</span>
-			{p.precioOfertaCentavos !== null && <s class="text-suave text-sm">{pesos(p.precioCentavos)}</s>}
+		<h3 class="mt-3.5 line-clamp-2 font-sans text-base leading-5">{p.nombre}</h3>
+		{colores.length > 1 && (
+			<span class="mt-1.5 flex gap-1.5 py-0.5" aria-label={`${colores.length} colores`}>
+				{colores.slice(0, 6).map((hex) => <span class="size-3 rounded-full" style={`background:${hex};box-shadow:inset 0 0 0 1px rgb(30 28 25 / 0.15)`}></span>)}
+			</span>
+		)}
+		<p class="mt-1 flex flex-wrap items-baseline gap-x-2.5 text-base">
+			{detalle && p.precioOfertaCentavos !== null && <s class="text-suave text-[15px]">{pesos(p.precioCentavos)}</s>}
+			<span class:list={[agotado && 'text-suave']}>{pesos(cobrado)}</span>
+			{!detalle && p.precioOfertaCentavos !== null && <s class="text-suave text-[15px]">{pesos(p.precioCentavos)}</s>}
 		</p>
+		{transferencia !== null && <p class:list={['text-suave mt-0.5 text-[13px]', !detalle && 'max-md:hidden']}>{pesos(transferencia)} con transferencia</p>}
 	</a>
-	{!agotado && transferencia !== null && <p class="text-exito mt-1 text-xs font-medium">{pesos(transferencia)} con transferencia</p>}
-	{!agotado && cuotas && <p class="text-suave mt-0.5 text-xs">{cuotas.cantidad} cuotas sin interés de {pesos(cuotas.monto)}</p>}
 </article>

@@ -6,9 +6,10 @@ import { avisos, type OpcionEnvio } from '../../lib/carrito';
 import { pesos, type Tienda } from '../../lib/formato';
 import { useValidacion } from '../../lib/useValidacion';
 import CotizadorEnvio from './CotizadorEnvio';
+import BarraEnvioGratis from './BarraEnvioGratis';
 import LineasCarrito from './LineasCarrito';
 
-type Datos = Pick<Tienda, 'retiro' | 'maxUnidadesPorPedido' | 'descuentoTransferenciaPorcentaje'>;
+type Datos = Pick<Tienda, 'retiro' | 'maxUnidadesPorPedido' | 'descuentoTransferenciaPorcentaje' | 'whatsapp' | 'envioGratisDesdeCentavos'>;
 
 export default function CarritoPagina({ tienda }: { tienda: Datos }) {
   const [envio, setEnvio] = useState<{ zonaEnvioId: number; codigoPostal: string } | null>(null);
@@ -17,11 +18,13 @@ export default function CarritoPagina({ tienda }: { tienda: Datos }) {
   const mensajes = Object.values(nota);
   const subtotalLocal = lineas.reduce((s, l) => s + l.precioCentavos * l.cantidad, 0);
   const subtotal = datos?.subtotalCentavos ?? subtotalLocal;
+  const promos = datos?.descuentos.filter((d) => d.tipo === 'promo') ?? [];
+  const ahorro = promos.reduce((s, d) => s + d.montoCentavos, 0);
 
   if (lineas.length === 0) {
     return (
       <div class="flex flex-col items-center gap-3 px-4 py-20 text-center">
-        <span class="foto-vacia size-16 rounded-full">
+        <span class="foto-vacia size-16">
           <ShoppingBag class="size-7" aria-hidden="true" />
         </span>
         <p class="text-lg font-semibold">Tu carrito está vacío</p>
@@ -70,20 +73,28 @@ export default function CarritoPagina({ tienda }: { tienda: Datos }) {
       </div>
 
       <aside class="space-y-5 lg:sticky lg:top-24 lg:self-start" aria-label="Resumen de la compra">
-        <CotizadorEnvio tienda={tienda} subtotalCentavos={subtotal} elegible elegida={envio?.zonaEnvioId ?? null} alElegir={elegirEnvio} />
+        <CotizadorEnvio tienda={tienda} subtotalCentavos={subtotal} items={lineas.map((l) => ({ varianteId: l.varianteId, cantidad: l.cantidad }))} elegible elegida={envio?.zonaEnvioId ?? null} alElegir={elegirEnvio} />
+
+        <BarraEnvioGratis subtotalCentavos={subtotal - ahorro} desdeCentavos={tienda.envioGratisDesdeCentavos} />
 
         <div class="bg-gris rounded-tienda space-y-2 p-4 text-sm">
           <p class="flex justify-between">
             <span>Subtotal</span>
             <span class={`tabular-nums ${cargando && !datos ? 'animate-pulse' : ''}`}>{pesos(subtotal)}</span>
           </p>
+          {promos.map((d) => (
+            <p class="text-exito flex justify-between">
+              <span>{d.descripcion}</span>
+              <span class="tabular-nums">−{pesos(d.montoCentavos)}</span>
+            </p>
+          ))}
           <p class="flex justify-between">
             <span>Envío</span>
             <span class="tabular-nums">{envio && datos ? (datos.envioCentavos === 0 ? <span class="text-exito font-medium">Gratis</span> : pesos(datos.envioCentavos)) : <span class="text-suave">A calcular</span>}</span>
           </p>
           <p class="border-linea flex items-baseline justify-between border-t pt-3 text-base font-semibold">
             <span>Total estimado</span>
-            <span class="text-lg tabular-nums">{pesos(envio && datos ? datos.totalCentavos : subtotal)}</span>
+            <span class="text-lg tabular-nums">{pesos(envio && datos ? datos.totalCentavos : subtotal - ahorro)}</span>
           </p>
           {tienda.descuentoTransferenciaPorcentaje > 0 && <p class="text-exito text-xs">Pagando con transferencia tenés {tienda.descuentoTransferenciaPorcentaje}% de descuento. Se aplica al finalizar la compra.</p>}
         </div>

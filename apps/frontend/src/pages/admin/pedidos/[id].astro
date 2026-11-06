@@ -1,13 +1,15 @@
 ---
-import { Ban, Check, CircleAlert, CircleCheck, Clock, CreditCard, FileText, History, Landmark, Mail, MapPin, PackageCheck, PackageOpen, Phone, Save, Store, Truck, Undo2, User } from '@lucide/astro';
+import { Ban, Check, CircleAlert, CircleCheck, Clock, Copy, CreditCard, FileText, History, ImageOff, Landmark, Mail, MapPin, MessageCircle, MessageSquareText, PackageCheck, PackageOpen, Phone, Printer, Save, Store, Truck, Undo2, User } from '@lucide/astro';
+import { sinEmail, telefonoWhatsapp, textosWhatsapp } from '../../../../../backend/src/compartido';
 import Campo from '../../../components/panel/Campo.astro';
 import Estado from '../../../components/panel/Estado.astro';
 import Insignia from '../../../components/panel/Insignia.astro';
 import Interruptor from '../../../components/panel/Interruptor.astro';
+import LinkDePago from '../../../components/panel/LinkDePago.astro';
 import Tarjeta from '../../../components/panel/Tarjeta.astro';
 import Panel from '../../../layouts/Panel.astro';
-import { api } from '../../../lib/api';
-import { ACCIONES, ENTREGAS, ESTADOS, PAGOS, SIGUIENTES, errorDe, fecha, marcado, pesos, txt } from '../../../lib/panel';
+import { api, leer } from '../../../lib/api';
+import { ACCIONES, CANALES, ENTREGAS, ESTADOS, PAGOS, SIGUIENTES, TRANSPORTES, errorDe, fecha, foto, marcado, pesos, txt } from '../../../lib/panel';
 
 export const prerender = false;
 
@@ -15,20 +17,22 @@ const ruta = `/api/admin/pedidos/${Astro.params.id}`;
 let error = '';
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
+  // El seguimiento se manda solo si el campo está en pantalla: así no se borra al guardar la factura o la nota.
   const r =
     f.get('accion') === 'datos'
-      ? await api(Astro.request, ruta, { numeroSeguimiento: txt(f, 'numeroSeguimiento'), facturaNumero: txt(f, 'facturaNumero') }, 'PATCH')
+      ? await api(Astro.request, ruta, { numeroSeguimiento: f.has('numeroSeguimiento') ? txt(f, 'numeroSeguimiento') : undefined, facturaNumero: txt(f, 'facturaNumero'), notaInterna: txt(f, 'notaInterna') }, 'PATCH')
       : await api(Astro.request, `${ruta}/estado`, {
           estado: f.get('estado'),
           nota: txt(f, 'nota'),
           numeroSeguimiento: txt(f, 'numeroSeguimiento'),
           devolverStock: marcado(f, 'devolverStock'),
+          devolverPlata: marcado(f, 'devolverPlata'),
         });
   if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
   error = await errorDe(r);
 }
 
-const respuesta = await api(Astro.request, ruta);
+const [respuesta, config] = await Promise.all([api(Astro.request, ruta), leer<any>(Astro.request, '/api/admin/configuracion')]);
 if (respuesta.status === 404) return Astro.redirect('/admin/pedidos');
 const p = (await respuesta.json()) as any;
 const conRetiro = p.metodo_entrega === 'retiro';
@@ -39,6 +43,10 @@ const excepciones = ['cancelado', 'reembolsado', 'a_revisar'];
 const avances = posibles.filter((e) => !excepciones.includes(e));
 const otros = posibles.filter((e) => excepciones.includes(e));
 const iconoAccion: Record<string, any> = { pagado: Check, en_preparacion: PackageOpen, enviado: Truck, listo_para_retirar: Store, entregado: PackageCheck, cancelado: Ban, reembolsado: Undo2, a_revisar: CircleAlert };
+// Un solo campo de seguimiento: va con el botón «Marcar como enviado» mientras ese paso está en pantalla, y si no, en Datos.
+// Con un pago aprobado de Mercado Pago, el reembolso puede devolver la plata desde acá.
+const pagoMp = p.pagos.some((x: any) => x.proveedor === 'mercadopago' && x.estado === 'aprobado');
+const seguimientoEnAccion = avances.includes('enviado');
 
 // Camino del pedido, para mostrar por dónde va.
 const camino = ['pendiente_pago', 'pagado', 'en_preparacion', conRetiro ? 'listo_para_retirar' : 'enviado', 'entregado'];
@@ -48,10 +56,33 @@ const fueraDeCamino = posicion === -1;
 const Entrega = conRetiro ? Store : p.metodo_entrega === 'sucursal' ? MapPin : Truck;
 const Pago = p.metodo_pago === 'transferencia' ? Landmark : CreditCard;
 const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', rechazado: 'rojo', reembolsado: 'violeta' };
+
+// Dirección en un solo texto, para pegarla en la etiqueta del correo.
+const direccion =
+  p.metodo_entrega === 'domicilio'
+    ? [p.nombre, `${p.calle} ${p.altura}${p.piso_depto ? `, ${p.piso_depto}` : ''}`, `${p.localidad}, ${p.provincia} (CP ${p.codigo_postal})`, `Tel. ${p.telefono}`, p.indicaciones]
+    : p.metodo_entrega === 'sucursal'
+      ? [p.nombre, `Sucursal ${p.sucursal_correo}`, `${p.localidad ? `${p.localidad}, ` : ''}${p.provincia} (CP ${p.codigo_postal})`, p.dni && `DNI ${p.dni}`, `Tel. ${p.telefono}`]
+      : null;
+
+// WhatsApp a la clienta con el texto armado según el estado (no gasta emails).
+const telefono = telefonoWhatsapp(p.telefono);
+const textos = textosWhatsapp({
+  tienda: config.titulo_tienda,
+  nombre: p.nombre,
+  numero: p.numero,
+  estado: p.estado,
+  linkSeguimiento: `${Astro.url.origin}/pedido/${p.token_seguimiento}`,
+  numeroSeguimiento: p.numero_seguimiento,
+  transporte: p.transporte ? (TRANSPORTES[p.transporte] ?? p.transporte) : null,
+  retiro: { direccion: config.retiro_direccion, horario: config.retiro_horario },
+});
+const whatsapp = (texto: string) => `https://wa.me/${telefono}?text=${encodeURIComponent(texto)}`;
 ---
 
 <Panel titulo={p.numero} error={error} volver={{ href: '/admin/pedidos', texto: 'Ventas' }}>
 	<Fragment slot="acciones">
+		{CANALES[p.canal] && <Insignia color="violeta">{CANALES[p.canal]}</Insignia>}
 		<Estado estado={p.estado} />
 		<span class="text-theme-xl font-semibold text-gray-800 tabular-nums">{pesos(p.total_centavos)}</span>
 	</Fragment>
@@ -79,6 +110,7 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 		{p.estado === 'pendiente_pago' && (
 			<p class="text-theme-sm text-warning-700 mb-4 flex items-center gap-2"><Clock class="size-4" aria-hidden="true" />Reserva hasta el {fecha(p.reserva_vence_en)}</p>
 		)}
+		{p.estado === 'pendiente_pago' && <LinkDePago pedido={p} tienda={config.titulo_tienda} />}
 
 		<div class="flex flex-wrap items-end gap-3">
 			{avances.map((e) => {
@@ -86,7 +118,7 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 				return (
 					<form method="post" class="flex flex-wrap items-end gap-3">
 						<input type="hidden" name="estado" value={e} />
-						{e === 'enviado' && <Campo etiqueta="Nº de seguimiento" nombre="numeroSeguimiento" valor={p.numero_seguimiento} required class="w-56" />}
+						{e === 'enviado' && <Campo etiqueta="Nº de seguimiento" nombre="numeroSeguimiento" valor={p.numero_seguimiento} required maxlength="80" class="w-56" />}
 						<button class="btn btn-primario"><Icono class="size-4" aria-hidden="true" />{ACCIONES[e]}</button>
 					</form>
 				);
@@ -102,9 +134,10 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 								<form method="post" class="space-y-3 border-b border-gray-100 pb-4 last:border-0 last:pb-0">
 									<input type="hidden" name="estado" value={e} />
 									{e === 'reembolsado' && p.estado !== 'a_revisar' && <Interruptor etiqueta="Las prendas vuelven al stock" nombre="devolverStock" />}
+									{e === 'reembolsado' && pagoMp && <Interruptor etiqueta="Devolver la plata por Mercado Pago" nombre="devolverPlata" marcado ayuda="Le devuelve a la clienta el total del pago, en su medio de pago, y recién después marca el pedido como reembolsado. Si Mercado Pago falla, no cambia nada." />}
 									<Campo etiqueta="Nota interna" nombre="nota" maxlength="500" placeholder="Opcional" />
 									<button class:list={['btn w-full', e === 'a_revisar' ? 'btn-secundario' : 'btn-peligro-suave']}><Icono class="size-4" aria-hidden="true" />{ACCIONES[e]}</button>
-									{e === 'reembolsado' && <p class="text-theme-xs text-gray-500">Solo lo registra. La plata se devuelve desde Mercado Pago o por transferencia.</p>}
+									{e === 'reembolsado' && !pagoMp && <p class="text-theme-xs text-gray-500">Solo lo registra: la plata se devuelve por transferencia o desde Mercado Pago.</p>}
 								</form>
 							);
 						})}
@@ -113,16 +146,55 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 			)}
 			{posibles.length === 0 && <p class="text-theme-sm text-gray-500">Pedido cerrado.</p>}
 		</div>
+
+		<div class="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-5">
+			{telefono && textos.estado && <a href={whatsapp(textos.estado)} target="_blank" rel="noopener" class="btn btn-secundario"><MessageCircle class="size-4" aria-hidden="true" />Avisar por WhatsApp</a>}
+			{telefono && <a href={whatsapp(textos.generico)} target="_blank" rel="noopener" class="btn-icono" title="Escribirle por WhatsApp" aria-label="Escribirle por WhatsApp"><MessageCircle class="size-5" aria-hidden="true" /></a>}
+			{direccion && <button type="button" data-copiar={direccion.filter(Boolean).join('\n')} class="btn-icono" title="Copiar dirección" aria-label="Copiar dirección"><Copy class="size-5" aria-hidden="true" /></button>}
+			<a href={`/admin/pedidos/${p.id}/remito`} target="_blank" class="btn-icono" title="Imprimir remito" aria-label="Imprimir remito"><Printer class="size-5" aria-hidden="true" /></a>
+		</div>
 	</Tarjeta>
+
+	<Tarjeta titulo={`Prendas (${p.items.reduce((n: number, i: any) => n + i.cantidad, 0)})`} alRas>
+		<ul class="divide-y divide-gray-100">
+			{p.items.map((i: any) => (
+				<li class="flex items-center gap-4 px-5 py-3 sm:px-6">
+					{i.foto ? <img src={foto(i.foto)} alt="" class="size-16 shrink-0 rounded-lg object-cover" /> : <span class="flex size-16 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400"><ImageOff class="size-5" aria-hidden="true" /></span>}
+					<div class="min-w-0 flex-1">
+						<p class="font-medium text-gray-800">{i.nombre_producto}</p>
+						<p class="flex flex-wrap gap-1.5 pt-1">
+							{i.talle && <Insignia color="gris">{i.talle}</Insignia>}
+							{i.color && <Insignia color="gris">{i.color}</Insignia>}
+							<span class="text-theme-xs text-gray-400">{i.sku}</span>
+						</p>
+					</div>
+					<div class="text-right">
+						<p class:list={['text-lg font-semibold tabular-nums', i.cantidad > 1 ? 'text-brand-500' : 'text-gray-800']}>× {i.cantidad}</p>
+						<p class="text-theme-xs text-gray-500 tabular-nums">{pesos(i.precio_unitario_centavos * i.cantidad)}</p>
+					</div>
+				</li>
+			))}
+		</ul>
+		<dl class="text-theme-sm space-y-1 border-t border-gray-100 px-5 py-4 sm:px-6">
+			<div class="flex justify-between text-gray-500"><dt>Subtotal</dt><dd class="tabular-nums">{pesos(p.subtotal_centavos)}</dd></div>
+			{p.descuentos.map((d: any) => <div class="flex justify-between text-gray-500"><dt>{d.descripcion}</dt><dd class="text-success-600 tabular-nums">− {pesos(d.monto_centavos)}</dd></div>)}
+			<div class="flex justify-between text-gray-500"><dt>Envío</dt><dd class="tabular-nums">{p.envio_centavos ? pesos(p.envio_centavos) : 'Gratis'}</dd></div>
+			<div class="flex justify-between font-semibold text-gray-800"><dt>Total</dt><dd class="text-base tabular-nums">{pesos(p.total_centavos)}</dd></div>
+		</dl>
+	</Tarjeta>
+
+	{p.nota_clienta && (
+		<p class="bg-warning-50 text-warning-800 text-theme-sm flex gap-2 rounded-xl p-4"><MessageSquareText class="size-5 shrink-0" aria-label="Nota de la clienta" />{p.nota_clienta}</p>
+	)}
 
 	<div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
 		<Tarjeta titulo="Clienta">
 			<User slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
 			<ul class="text-theme-sm space-y-2 text-gray-700">
 				<li class="font-medium text-gray-800">{p.nombre}</li>
-				<li class="flex items-center gap-2"><Mail class="size-4 shrink-0 text-gray-400" aria-hidden="true" /><a href={`mailto:${p.email}`} class="hover:text-brand-500 truncate">{p.email}</a></li>
+				<li class="flex items-center gap-2"><Mail class="size-4 shrink-0 text-gray-400" aria-hidden="true" />{p.email && !sinEmail(p.email) ? <a href={`mailto:${p.email}`} class="hover:text-brand-500 truncate">{p.email}</a> : <span class="text-gray-400">Sin email</span>}</li>
 				<li class="flex items-center gap-2"><Phone class="size-4 shrink-0 text-gray-400" aria-hidden="true" /><a href={`tel:${p.telefono}`} class="hover:text-brand-500">{p.telefono}</a></li>
-				<li class="flex items-center gap-2"><FileText class="size-4 shrink-0 text-gray-400" aria-hidden="true" />DNI {p.dni}{p.cuit ? ` · CUIT ${p.cuit}` : ''}</li>
+				{p.dni && <li class="flex items-center gap-2"><FileText class="size-4 shrink-0 text-gray-400" aria-hidden="true" />DNI {p.dni}{p.cuit ? ` · CUIT ${p.cuit}` : ''}</li>}
 			</ul>
 		</Tarjeta>
 
@@ -133,7 +205,7 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 				{p.metodo_entrega === 'sucursal' && <p>{p.sucursal_correo}<br />{p.localidad ? `${p.localidad}, ` : ''}{p.provincia} · CP {p.codigo_postal}</p>}
 				{conRetiro && <p class="text-gray-500">Retira en persona.</p>}
 				{p.indicaciones && <p class="rounded-lg bg-gray-50 p-2.5">{p.indicaciones}</p>}
-				{p.numero_seguimiento && <p><Insignia color="celeste"><Truck aria-hidden="true" />{p.numero_seguimiento}</Insignia></p>}
+				{p.numero_seguimiento && <p><Insignia color="celeste"><Truck aria-hidden="true" />{p.transporte ? `${TRANSPORTES[p.transporte] ?? p.transporte} · ` : ''}{p.numero_seguimiento}</Insignia></p>}
 			</div>
 		</Tarjeta>
 
@@ -152,37 +224,14 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 		</Tarjeta>
 	</div>
 
-	<Tarjeta alRas>
-		<div class="overflow-x-auto">
-			<table class="min-w-full">
-				<thead class="border-b border-gray-100"><tr><th class="th">Prenda</th><th class="th num">Precio</th><th class="th num">Cant.</th><th class="th num">Subtotal</th></tr></thead>
-				<tbody class="divide-y divide-gray-100">
-					{p.items.map((i: any) => (
-						<tr>
-							<td class="td"><span class="font-medium text-gray-800">{i.nombre_producto}</span><br /><span class="text-theme-xs text-gray-500">{[i.talle, i.color, i.sku].filter(Boolean).join(' · ')}</span></td>
-							<td class="td num">{pesos(i.precio_unitario_centavos)}</td>
-							<td class="td num">{i.cantidad}</td>
-							<td class="td num">{pesos(i.precio_unitario_centavos * i.cantidad)}</td>
-						</tr>
-					))}
-				</tbody>
-				<tfoot class="border-t border-gray-100">
-					<tr><td class="td num text-gray-500" colspan="3">Subtotal</td><td class="td num">{pesos(p.subtotal_centavos)}</td></tr>
-					{p.descuentos.map((d: any) => <tr><td class="td num text-gray-500" colspan="3">{d.descripcion}</td><td class="td num text-success-600">− {pesos(d.monto_centavos)}</td></tr>)}
-					<tr><td class="td num text-gray-500" colspan="3">Envío</td><td class="td num">{p.envio_centavos ? pesos(p.envio_centavos) : 'Gratis'}</td></tr>
-					<tr><td class="td num font-semibold text-gray-800" colspan="3">Total</td><td class="td num text-base font-semibold text-gray-800">{pesos(p.total_centavos)}</td></tr>
-				</tfoot>
-			</table>
-		</div>
-	</Tarjeta>
-
 	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-		<Tarjeta titulo="Seguimiento y factura">
+		<Tarjeta titulo="Datos internos">
 			<FileText slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
 			<form method="post" class="space-y-4">
 				<input type="hidden" name="accion" value="datos" />
-				<Campo etiqueta="Nº de seguimiento del correo" nombre="numeroSeguimiento" valor={p.numero_seguimiento} maxlength="80" />
+				{!seguimientoEnAccion && !conRetiro && <Campo etiqueta="Nº de seguimiento del correo" nombre="numeroSeguimiento" valor={p.numero_seguimiento} maxlength="80" />}
 				<Campo etiqueta="Nº de factura" nombre="facturaNumero" valor={p.factura_numero} maxlength="40" />
+				<Campo etiqueta="Nota interna" nombre="notaInterna" tipo="area" valor={p.nota_interna} maxlength="1000" rows="3" ayuda="Solo se ve en el panel." />
 				<button class="btn btn-secundario"><Save class="size-4" aria-hidden="true" />Guardar</button>
 			</form>
 		</Tarjeta>
@@ -204,3 +253,15 @@ const colorPago: Record<string, any> = { aprobado: 'verde', pendiente: 'ambar', 
 		</Tarjeta>
 	</div>
 </Panel>
+
+<script>
+	// Copiar la dirección: el ícono pasa a verde un momento para confirmar.
+	for (const boton of document.querySelectorAll<HTMLButtonElement>('[data-copiar]')) {
+		boton.addEventListener('click', async () => {
+			await navigator.clipboard.writeText(boton.dataset.copiar!);
+			boton.classList.add('text-success-600');
+			boton.title = 'Copiada';
+			setTimeout(() => (boton.classList.remove('text-success-600'), (boton.title = 'Copiar dirección')), 1500);
+		});
+	}
+</script>

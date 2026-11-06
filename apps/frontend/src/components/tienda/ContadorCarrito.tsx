@@ -8,14 +8,14 @@ export default function ContadorCarrito() {
   return (
     <button
       type="button"
-      class="boton-icono"
+      class="hover:bg-gris inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 px-2.5 text-sm transition"
       onClick={() => carritoAbierto.set(true)}
       title="Carrito"
       aria-label={cantidad ? `Carrito, ${cantidad} ${cantidad === 1 ? 'prenda' : 'prendas'}` : 'Carrito vacío'}
     >
-      <ShoppingBag class="size-6" aria-hidden="true" />
+      <ShoppingBag class="size-5" aria-hidden="true" />
       {cantidad > 0 && (
-        <span class="bg-primario text-primario-texto absolute top-1 right-0.5 flex min-w-5 items-center justify-center rounded-full px-1 text-[11px] leading-5 font-semibold" aria-hidden="true">
+        <span class="max-md:hidden" aria-hidden="true">
           {cantidad}
         </span>
       )}

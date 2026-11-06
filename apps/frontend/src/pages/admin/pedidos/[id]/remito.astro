@@ -1,0 +1,110 @@
+---
+// Remito para meter en el paquete: datos de la tienda, de la clienta, la entrega y las prendas. Sin precios, salvo ?precios.
+// Página suelta (sin el marco del panel) pensada para imprimir en A4.
+import '../../../../styles/panel.css';
+import { Printer } from '@lucide/astro';
+import { api, leer } from '../../../../lib/api';
+import { ENTREGAS, PAGOS, TRANSPORTES, dia, pesos } from '../../../../lib/panel';
+
+export const prerender = false;
+
+const [respuesta, config] = await Promise.all([api(Astro.request, `/api/admin/pedidos/${Astro.params.id}`), leer<any>(Astro.request, '/api/admin/configuracion')]);
+if (!respuesta.ok) return Astro.redirect('/admin/pedidos');
+const p = (await respuesta.json()) as any;
+const conPrecios = Astro.url.searchParams.has('precios');
+const unidades = p.items.reduce((n: number, i: any) => n + i.cantidad, 0);
+---
+
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<title>Remito {p.numero}</title>
+		<style>
+			@page { size: A4; margin: 15mm; }
+		</style>
+	</head>
+	<body class="bg-gray-100 text-gray-900 print:bg-white">
+		<nav class="mx-auto flex max-w-3xl items-center justify-end gap-2 p-4 print:hidden">
+			<a href={conPrecios ? '?' : '?precios'} class="btn btn-secundario">{conPrecios ? 'Sin precios' : 'Con precios'}</a>
+			<button type="button" data-imprimir class="btn btn-primario"><Printer class="size-4" aria-hidden="true" />Imprimir</button>
+		</nav>
+
+		<main class="mx-auto max-w-3xl space-y-6 bg-white p-6 text-sm sm:p-10 print:max-w-none print:p-0">
+			<header class="flex items-start justify-between gap-4 border-b border-gray-300 pb-4">
+				<div>
+					<p class="text-xl font-semibold">{config.titulo_tienda}</p>
+					{config.razon_social && <p>{config.razon_social}{config.cuit ? ` · CUIT ${config.cuit}` : ''}</p>}
+					<p class="text-gray-600">{[config.email_contacto, config.whatsapp].filter(Boolean).join(' · ')}</p>
+				</div>
+				<div class="text-right">
+					<p class="text-xl font-semibold whitespace-nowrap">{p.numero}</p>
+					<p class="text-gray-600">{dia(p.creado_en)}</p>
+				</div>
+			</header>
+
+			<section class="grid grid-cols-2 gap-6">
+				<div>
+					<h2 class="mb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase">Clienta</h2>
+					<p class="font-medium">{p.nombre}</p>
+					<p>Tel. {p.telefono}</p>
+					{p.dni && <p>DNI {p.dni}</p>}
+				</div>
+				<div>
+					<h2 class="mb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase">{ENTREGAS[p.metodo_entrega]}</h2>
+					{p.metodo_entrega === 'domicilio' && <p>{p.calle} {p.altura}{p.piso_depto ? `, ${p.piso_depto}` : ''}<br />{p.localidad}, {p.provincia}<br />CP {p.codigo_postal}</p>}
+					{p.metodo_entrega === 'sucursal' && <p>Sucursal {p.sucursal_correo}<br />{p.localidad ? `${p.localidad}, ` : ''}{p.provincia}<br />CP {p.codigo_postal}</p>}
+					{p.metodo_entrega === 'retiro' && <p>{config.retiro_direccion}{config.retiro_horario && <><br />{config.retiro_horario}</>}</p>}
+					{p.indicaciones && <p class="mt-1 text-gray-600">{p.indicaciones}</p>}
+					{p.numero_seguimiento && <p class="mt-1">{p.transporte ? `${TRANSPORTES[p.transporte] ?? p.transporte} · ` : ''}Seguimiento {p.numero_seguimiento}</p>}
+				</div>
+			</section>
+
+			<table class="w-full border-collapse">
+				<thead>
+					<tr class="border-b border-gray-300 text-left text-xs tracking-wide text-gray-500 uppercase">
+						<th class="py-2 font-semibold">Prenda</th>
+						<th class="py-2 font-semibold">Talle</th>
+						<th class="py-2 font-semibold">Color</th>
+						<th class="py-2 text-right font-semibold">Cant.</th>
+						{conPrecios && <th class="py-2 text-right font-semibold">Subtotal</th>}
+					</tr>
+				</thead>
+				<tbody>
+					{p.items.map((i: any) => (
+						<tr class="border-b border-gray-200">
+							<td class="py-2">{i.nombre_producto}<br /><span class="text-xs text-gray-500">{i.sku}</span></td>
+							<td class="py-2">{i.talle ?? '—'}</td>
+							<td class="py-2">{i.color ?? '—'}</td>
+							<td class="py-2 text-right font-semibold tabular-nums">{i.cantidad}</td>
+							{conPrecios && <td class="py-2 text-right tabular-nums">{pesos(i.precio_unitario_centavos * i.cantidad)}</td>}
+						</tr>
+					))}
+				</tbody>
+				<tfoot>
+					<tr><td class="py-2 text-gray-600" colspan="3">{unidades} {unidades === 1 ? 'prenda' : 'prendas'}</td><td></td>{conPrecios && <td></td>}</tr>
+					{conPrecios && (
+						<>
+							{p.descuentos.map((d: any) => <tr><td class="py-1 text-right text-gray-600" colspan="4">{d.descripcion}</td><td class="py-1 text-right tabular-nums">− {pesos(d.monto_centavos)}</td></tr>)}
+							<tr><td class="py-1 text-right text-gray-600" colspan="4">Envío</td><td class="py-1 text-right tabular-nums">{p.envio_centavos ? pesos(p.envio_centavos) : 'Gratis'}</td></tr>
+							<tr><td class="py-1 text-right font-semibold" colspan="4">Total ({PAGOS[p.metodo_pago]})</td><td class="py-1 text-right font-semibold tabular-nums">{pesos(p.total_centavos)}</td></tr>
+						</>
+					)}
+				</tfoot>
+			</table>
+
+			{(p.nota_clienta || p.nota_interna) && (
+				<section class="space-y-2">
+					{p.nota_clienta && <p class="rounded border border-gray-300 p-3"><span class="font-semibold">Nota de la clienta:</span> {p.nota_clienta}</p>}
+					{p.nota_interna && <p class="rounded border border-dashed border-gray-300 p-3 print:hidden"><span class="font-semibold">Nota interna:</span> {p.nota_interna}</p>}
+				</section>
+			)}
+		</main>
+
+		<script>
+			document.querySelector('[data-imprimir]')?.addEventListener('click', () => print());
+		</script>
+	</body>
+</html>

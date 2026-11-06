@@ -1,0 +1,317 @@
+---
+// Textos de la tienda y legales: se elige uno a la izquierda y se edita a la derecha, como las plantillas de email. Arriba,
+// todo lo que falta completar antes de publicar (datos vacíos de Configuración y marcas [COMPLETAR]/[CONTADOR]).
+// «Restaurar el original» vuelve al texto de lib/textos.ts. Guardar el original sin cambios lo deja como "sin editar",
+// así una mejora futura del texto original le llega sola.
+import { ChevronDown, CircleAlert, CircleCheck, ExternalLink, GripVertical, Pencil, Plus, RotateCcw, Save, Trash2 } from '@lucide/astro';
+import BarraGuardado from '../../components/panel/BarraGuardado.astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import type { Tienda } from '../../lib/formato';
+import { errorDe } from '../../lib/panel';
+import { TEXTOS, VARIABLES, dePreguntas, faltantesDe, textoDe, type ClaveTexto } from '../../lib/textos';
+
+export const prerender = false;
+
+const esPreguntas = (clave: string) => clave === 'contenido_preguntas_frecuentes';
+// El texto tal como se edita (las preguntas, una por bloque).
+const enTexto = (clave: ClaveTexto, contenido: Record<string, unknown>) => (esPreguntas(clave) ? dePreguntas(textoDe('contenido_preguntas_frecuentes', contenido)) : textoDe(clave, contenido));
+const original = (clave: ClaveTexto) => enTexto(clave, {});
+const normalizar = (t: string) => t.replace(/\r\n/g, '\n').trim();
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const texto = TEXTOS.find((t) => t.clave === f.get('clave'));
+  if (texto) {
+    const crudo = normalizar(String(f.get('texto') ?? ''));
+    // Las preguntas llegan como lista: cada pregunta con su respuesta, en el orden de la pantalla.
+    const respuestas = f.getAll('respuesta').map((r) => normalizar(String(r)));
+    const preguntas = f.getAll('pregunta').map((p, i) => ({ pregunta: normalizar(String(p)), respuesta: respuestas[i] ?? '' })).filter((q) => q.pregunta && q.respuesta);
+    // Restaurar, o guardar el original tal cual, deja la clave vacía: la tienda usa el original.
+    const sinEditar =
+      f.get('accion') === 'restaurar' ||
+      (esPreguntas(texto.clave) ? JSON.stringify(preguntas) === JSON.stringify(textoDe('contenido_preguntas_frecuentes', {})) : crudo === normalizar(original(texto.clave)));
+    const valor = esPreguntas(texto.clave) ? (sinEditar ? [] : preguntas) : sinEditar ? '' : crudo;
+    const r = await api(Astro.request, `/api/admin/configuracion/${texto.clave}`, { valor }, 'PUT');
+    if (!r.ok) error = await errorDe(r);
+    // Desde la barra «Cambios sin guardar», que pide la respuesta en JSON.
+    if (Astro.request.headers.get('accept') === 'application/json') return Response.json(error ? { error } : { ok: true }, { status: error ? 400 : 200 });
+    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?t=${texto.clave}&ok`, 303);
+  }
+}
+
+// Se lee la configuración del panel (no /api/tienda, que puede venir de una caché) y se arma lo que usan las variables.
+const config = await leer<Record<string, any>>(Astro.request, '/api/admin/configuracion');
+const tienda = {
+  comercio: {
+    razonSocial: config.razon_social,
+    cuit: config.cuit,
+    condicionFiscal: config.condicion_fiscal,
+    domicilio: config.domicilio_comercial,
+    horarioAtencion: config.horario_atencion,
+    responsableAtencion: config.responsable_atencion,
+    dataFiscalUrl: config.data_fiscal_url,
+  },
+  emailContacto: config.email_contacto,
+  whatsapp: config.whatsapp,
+  instagram: config.instagram,
+  reservaTransferenciaHoras: config.reserva_transferencia_horas,
+  reservaMercadoPagoMinutos: config.reserva_mercado_pago_minutos,
+  descuentoTransferenciaPorcentaje: config.descuento_transferencia_porcentaje,
+  cuotasSinInteres: config.cuotas_sin_interes ? { cantidad: config.cuotas_cantidad } : null,
+  retiro: config.retiro_habilitado ? { direccion: config.retiro_direccion, horario: config.retiro_horario } : null,
+} as Tienda;
+
+const lista = TEXTOS.map((t) => {
+  const guardado = config[t.clave];
+  const texto = enTexto(t.clave, config);
+  return { ...t, texto, editado: esPreguntas(t.clave) ? Array.isArray(guardado) && guardado.length > 0 : typeof guardado === 'string' && guardado.trim() !== '', faltan: faltantesDe(texto, tienda) };
+});
+const actual = lista.find((t) => t.clave === Astro.url.searchParams.get('t')) ?? lista[0];
+
+// El pie también necesita los datos del comercio y el QR de Data Fiscal, aunque no estén en ningún texto.
+const faltanPie = [
+  !tienda.comercio.razonSocial && 'Nombre y apellido o razón social (en Configuración › Datos del comercio)',
+  !tienda.comercio.cuit && 'CUIT (en Configuración › Datos del comercio)',
+  !tienda.comercio.dataFiscalUrl && 'Link del QR de Data Fiscal (en Configuración › Datos del comercio)',
+].filter(Boolean) as string[];
+const resumen = [...lista.filter((t) => t.faltan.length).map((t) => ({ nombre: t.nombre, clave: t.clave as string | null, faltan: t.faltan })), ...(faltanPie.length ? [{ nombre: 'Pie de la tienda', clave: null, faltan: faltanPie }] : [])];
+// Cada variable se puede editar acá mismo: se guarda en Configuración, que es de donde la toman todos los textos.
+// «claves» es la clave de configuración que cambia; el horario de retiro se arma en Envíos y no se escribe a mano.
+type Editable = { claves: string; tipo: 'text' | 'email' | 'number'; actual: unknown; ayuda?: string };
+const EDITABLES: Record<string, Editable> = {
+  razon_social: { claves: 'razon_social', tipo: 'text', actual: config.razon_social },
+  cuit: { claves: 'cuit', tipo: 'text', actual: config.cuit, ayuda: 'Once números, con o sin guiones.' },
+  condicion_fiscal: { claves: 'condicion_fiscal', tipo: 'text', actual: config.condicion_fiscal },
+  domicilio: { claves: 'domicilio_comercial', tipo: 'text', actual: config.domicilio_comercial },
+  horario_atencion: { claves: 'horario_atencion', tipo: 'text', actual: config.horario_atencion },
+  responsable_atencion: { claves: 'responsable_atencion', tipo: 'text', actual: config.responsable_atencion },
+  email: { claves: 'email_contacto', tipo: 'email', actual: config.email_contacto },
+  whatsapp: { claves: 'whatsapp', tipo: 'text', actual: config.whatsapp, ayuda: 'Solo números.' },
+  instagram: { claves: 'instagram', tipo: 'text', actual: config.instagram, ayuda: 'Solo el usuario, sin @.' },
+  horas_reserva: { claves: 'reserva_transferencia_horas', tipo: 'number', actual: config.reserva_transferencia_horas },
+  minutos_reserva: { claves: 'reserva_mercado_pago_minutos', tipo: 'number', actual: config.reserva_mercado_pago_minutos },
+  aviso_descuento: { claves: 'descuento_transferencia_porcentaje', tipo: 'number', actual: config.descuento_transferencia_porcentaje, ayuda: 'Porcentaje de descuento. 0 = sin descuento.' },
+  aviso_cuotas: { claves: 'cuotas', tipo: 'number', actual: config.cuotas_sin_interes ? config.cuotas_cantidad : 0, ayuda: 'Cantidad de cuotas sin interés. 0 = sin cuotas.' },
+};
+const variables = Object.entries(VARIABLES).map(([clave, v]) => ({ clave, descripcion: v.descripcion, valor: v.valor(tienda), editable: EDITABLES[clave] }));
+const preguntas = textoDe('contenido_preguntas_frecuentes', config);
+---
+
+<Panel titulo="Textos y legales" error={error}>
+	<div class="space-y-5">
+		<Tarjeta titulo={resumen.length ? 'Antes de publicar, falta completar' : 'Todo completo'}>
+			{resumen.length ? <CircleAlert slot="icono" class="text-warning-500 size-5" aria-hidden="true" /> : <CircleCheck slot="icono" class="text-success-500 size-5" aria-hidden="true" />}
+			{resumen.length ? (
+				<div class="space-y-4">
+					<p class="text-sm text-gray-600">
+						Los datos de Configuración se completan una vez en <a href="/admin/configuracion" class="text-brand-500 underline">Configuración</a> y aparecen solos en todos los textos. Las marcas [COMPLETAR] y [CONTADOR] se reemplazan escribiendo en el texto. Mientras falten, la tienda las muestra resaltadas.
+					</p>
+					<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+						{resumen.map((r) => (
+							<div>
+								<h3 class="mb-1 text-sm font-medium text-gray-800">{r.clave ? <a href={`?t=${r.clave}`} class="hover:text-brand-500 underline">{r.nombre}</a> : r.nombre}</h3>
+								<ul class="list-disc space-y-0.5 pl-5 text-sm text-gray-600">{r.faltan.map((f) => <li>{f}</li>)}</ul>
+							</div>
+						))}
+					</div>
+				</div>
+			) : (
+				<p class="text-sm text-gray-600">Los textos no tienen datos vacíos ni marcas pendientes. Igual conviene que el contador los revise antes de lanzar.</p>
+			)}
+		</Tarjeta>
+
+		<div class="grid grid-cols-1 gap-5 xl:grid-cols-[18rem_minmax(0,1fr)]">
+			<nav aria-label="Textos">
+				<ul class="space-y-1">
+					{lista.map((t) => (
+						<li>
+							<a href={`?t=${t.clave}`} aria-current={t.clave === actual.clave ? 'page' : undefined} class:list={['flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm transition', t.clave === actual.clave ? 'border-brand-200 bg-brand-50 text-brand-700 font-medium' : 'border-transparent text-gray-700 hover:bg-gray-100']}>
+								<span>{t.nombre}</span>
+								{t.faltan.length > 0 ? <Insignia color="ambar">Faltan {t.faltan.length}</Insignia> : t.editado && <Insignia color="azul">Editado</Insignia>}
+							</a>
+						</li>
+					))}
+				</ul>
+			</nav>
+
+			<div class="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_20rem]">
+				<Tarjeta titulo={actual.nombre}>
+					<a slot="acciones" href={actual.ruta} target="_blank" rel="noopener" class="btn btn-secundario"><ExternalLink class="size-4" aria-hidden="true" />Ver en la tienda</a>
+					<form method="post" class="space-y-4" data-pendiente={actual.nombre} autocomplete="off">
+						<input type="hidden" name="clave" value={actual.clave} />
+						{esPreguntas(actual.clave) ? (
+							<div class="space-y-3">
+								{/* Una pregunta por fila: se toca para editarla, se arrastra (o flechas sobre el asa) para ordenarla. */}
+								<ol data-preguntas class="space-y-2">
+									{preguntas.map((q, i) => (
+										<li data-id={i} class="flex items-start gap-1 rounded-xl border border-gray-200 bg-white p-1">
+											<button type="button" data-asa class="btn-icono shrink-0 cursor-grab" title="Arrastrá para mover, o usá las flechas" aria-label="Mover la pregunta (flechas arriba y abajo)"><GripVertical class="size-4" aria-hidden="true" /></button>
+											<details class="group min-w-0 flex-1">
+												<summary class="flex cursor-pointer list-none items-center gap-2 py-2 pr-2 text-sm font-medium text-gray-800 [&::-webkit-details-marker]:hidden">
+													<span data-titulo class="min-w-0 flex-1 truncate">{q.pregunta}</span>
+													<ChevronDown class="size-4 shrink-0 text-gray-400 transition group-open:rotate-180" aria-hidden="true" />
+												</summary>
+												<div class="space-y-3 pt-1 pr-2 pb-2">
+													<label class="block"><span class="etiqueta">Pregunta</span><input name="pregunta" value={q.pregunta} required data-texto class="campo" /></label>
+													<label class="block"><span class="etiqueta">Respuesta</span><textarea name="respuesta" rows="4" required data-texto class="campo h-auto py-2.5 text-sm leading-relaxed">{q.respuesta}</textarea></label>
+													<details class="group/borrar flex justify-end">
+														<summary class="btn btn-peligro-suave group-open/borrar:hidden" title="Borrar" aria-label="Borrar la pregunta"><Trash2 class="size-4" aria-hidden="true" /></summary>
+														<button type="button" data-borrar class="btn btn-peligro"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+													</details>
+												</div>
+											</details>
+										</li>
+									))}
+								</ol>
+								<button type="button" data-agregar-pregunta class="btn btn-secundario"><Plus class="size-4" aria-hidden="true" />Agregar pregunta</button>
+							</div>
+						) : (
+							<textarea name="texto" rows="22" data-texto aria-label={`Texto de ${actual.nombre}`} class="campo h-auto py-3 font-mono text-sm leading-relaxed">{actual.texto}</textarea>
+						)}
+						<details class="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+							<summary class="cursor-pointer font-medium text-gray-700">Cómo dar formato</summary>
+							<ul class="mt-2 list-disc space-y-1 pl-5">
+								{esPreguntas(actual.clave) ? (
+									<li>En la respuesta, dejá una línea en blanco entre párrafos.</li>
+								) : (
+									<>
+										<li>Dejá una línea en blanco entre párrafos.</li>
+										<li><code>## Título</code> arma un subtítulo y las líneas que empiezan con <code>- </code> arman una lista.</li>
+									</>
+								)}
+								<li><code>**texto**</code> va en negrita y <code>[texto](/contacto)</code> es un link.</li>
+								<li>Los datos entre llaves, como <code>{'{{cuit}}'}</code>, se completan solos con lo cargado en Configuración.</li>
+							</ul>
+						</details>
+						<div class="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+							<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+							{actual.editado && <button name="accion" value="restaurar" class="btn btn-secundario ml-auto"><RotateCcw class="size-4" aria-hidden="true" />Restaurar el original</button>}
+						</div>
+					</form>
+				</Tarjeta>
+
+				<Tarjeta titulo="Datos que se completan solos">
+					<p class="mb-3 text-sm text-gray-500">Tocá uno para insertarlo donde está el cursor.</p>
+					<ul class="space-y-2">
+						{variables.map((v) => (
+							<li class="flex flex-wrap items-stretch gap-1">
+								<button type="button" data-variable={`{{${v.clave}}}`} class="hover:border-brand-300 hover:bg-brand-25 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm transition">
+									<span class="block text-gray-800">{v.descripcion}</span>
+									<span data-valor class:list={['block truncate text-xs', v.valor ? 'text-gray-500' : 'text-warning-600']}>{v.valor || 'Vacío'}</span>
+								</button>
+								{v.editable ? (
+									<button type="button" data-var-editar class="btn-icono shrink-0 self-center" title="Editar este dato" aria-label={`Editar ${v.descripcion}`}><Pencil class="size-4" aria-hidden="true" /></button>
+								) : (
+									<a href="/admin/envios" class="btn-icono shrink-0 self-center" title="Se edita en Envíos › Retiro en persona" aria-label={`Editar ${v.descripcion} en Envíos`}><ExternalLink class="size-4" aria-hidden="true" /></a>
+								)}
+								{v.editable && (
+									<form data-var-form data-claves={v.editable.claves} hidden class="basis-full space-y-2 rounded-lg bg-gray-50 p-2">
+										<input name="valor" type={v.editable.tipo} value={String(v.editable.actual ?? '')} aria-label={v.descripcion} required={v.editable.tipo === 'number'} class="campo h-10" />
+										{v.editable.ayuda && <p class="text-theme-xs text-gray-500">{v.editable.ayuda}</p>}
+										<p data-var-estado role="status" class="text-theme-xs text-error-600"></p>
+										<div class="flex justify-end gap-2">
+											<button type="button" data-var-cancelar class="btn btn-secundario h-9">Cancelar</button>
+											<button class="btn btn-primario h-9"><Save class="size-4" aria-hidden="true" />Guardar</button>
+										</div>
+									</form>
+								)}
+							</li>
+						))}
+					</ul>
+				</Tarjeta>
+			</div>
+		</div>
+	</div>
+	<BarraGuardado />
+</Panel>
+
+<script>
+	import { ordenable } from '../../scripts/ordenable';
+
+	// Las variables se insertan donde estaba el cursor del último campo de texto que se tocó.
+	let texto = document.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-texto]');
+	document.addEventListener('focusin', (e) => {
+		if ((e.target as Element).matches('[data-texto]')) texto = e.target as HTMLTextAreaElement;
+	});
+	for (const boton of document.querySelectorAll<HTMLButtonElement>('[data-variable]')) {
+		boton.addEventListener('click', () => {
+			if (!texto) return;
+			const desde = texto.selectionStart ?? texto.value.length;
+			texto.setRangeText(boton.dataset.variable!, desde, texto.selectionEnd ?? desde, 'end');
+			texto.focus();
+			// Para que la barra «Cambios sin guardar» lo vea.
+			texto.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+	}
+
+	// Editar una variable: se guarda en Configuración (de ahí la toman todos los textos) sin recargar la página,
+	// así no se pierde lo que se esté escribiendo en el texto. Las cuotas son dos claves: si están en 0 se apagan.
+	for (const form of document.querySelectorAll<HTMLFormElement>('[data-var-form]')) {
+		const fila = form.closest('li')!;
+		const estado = form.querySelector<HTMLElement>('[data-var-estado]')!;
+		const entrada = form.querySelector<HTMLInputElement>('input')!;
+		const inicial = entrada.value;
+		fila.querySelector('[data-var-editar]')!.addEventListener('click', () => {
+			form.hidden = !form.hidden;
+			if (!form.hidden) entrada.focus();
+		});
+		form.querySelector('[data-var-cancelar]')!.addEventListener('click', () => {
+			entrada.value = inicial;
+			estado.textContent = '';
+			form.hidden = true;
+		});
+		form.addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const clave = form.dataset.claves!;
+			const valor = entrada.type === 'number' ? Number(entrada.value) : entrada.value.trim();
+			const cambios: [string, unknown][] = clave === 'cuotas' ? [['cuotas_sin_interes', Number(valor) > 0], ...(Number(valor) > 0 ? [['cuotas_cantidad', valor] as [string, unknown]] : [])] : [[clave, valor]];
+			estado.textContent = '';
+			for (const [k, v] of cambios) {
+				const r = await fetch(`/api/admin/configuracion/${k}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ valor: v }) });
+				if (!r.ok) return void (estado.textContent = ((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'No se pudo guardar.');
+			}
+			const mostrado = fila.querySelector<HTMLElement>('[data-valor]')!;
+			mostrado.textContent = clave === 'cuotas' || clave.startsWith('descuento') ? 'Guardado: la frase se ve al recargar' : String(valor || 'Vacío');
+			mostrado.className = 'block truncate text-xs text-gray-500';
+			form.hidden = true;
+		});
+	}
+
+	// Preguntas frecuentes: agregar, borrar (en dos toques) y ordenar. El orden de la pantalla es el que se guarda.
+	const lista = document.querySelector<HTMLElement>('[data-preguntas]');
+	if (lista) {
+		const form = lista.closest('form')!;
+		const avisar = () => form.dispatchEvent(new Event('change'));
+		// Molde de «Agregar pregunta»: una copia vacía de la primera (al cargar siempre hay al menos una).
+		const molde = lista.firstElementChild!.cloneNode(true) as HTMLElement;
+		for (const campo of molde.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')) campo.defaultValue = '';
+		molde.querySelector('[data-titulo]')!.textContent = 'Pregunta nueva';
+		let siguiente = lista.children.length;
+
+		ordenable(lista, { asa: '[data-asa]', guardar: async () => avisar() });
+		form.querySelector('[data-agregar-pregunta]')!.addEventListener('click', () => {
+			const nueva = molde.cloneNode(true) as HTMLElement;
+			nueva.dataset.id = String(siguiente++);
+			lista.append(nueva);
+			nueva.querySelector('details')!.open = true;
+			nueva.querySelector('input')!.focus();
+			avisar();
+		});
+		lista.addEventListener('click', (e) => {
+			const borrar = (e.target as Element).closest('[data-borrar]');
+			if (!borrar) return;
+			borrar.closest('li')!.remove();
+			avisar();
+		});
+		lista.addEventListener('input', (e) => {
+			const campo = e.target as HTMLInputElement;
+			if (campo.name === 'pregunta') campo.closest('li')!.querySelector('[data-titulo]')!.textContent = campo.value || 'Pregunta nueva';
+		});
+		// Una pregunta o respuesta vacía dentro de una fila cerrada: se abre para que se vea el aviso.
+		lista.addEventListener('invalid', (e) => ((e.target as Element).closest('details')!.open = true), true);
+	}
+</script>

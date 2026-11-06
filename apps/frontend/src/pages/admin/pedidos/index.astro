@@ -1,22 +1,42 @@
 ---
-import { ChevronLeft, ChevronRight, CreditCard, Download, Landmark, MapPin, Search, ShoppingBag, Store, Truck } from '@lucide/astro';
+import { Check, ChevronLeft, ChevronRight, CreditCard, Download, Hand, Landmark, MapPin, MessageCircle, Plus, Search, ShoppingBag, Store, Truck } from '@lucide/astro';
+import { sinEmail } from '../../../../../backend/src/compartido';
+import IconoInstagram from '../../../components/tienda/IconoInstagram.astro';
+import Cantidad from '../../../components/panel/Cantidad.astro';
 import Estado from '../../../components/panel/Estado.astro';
 import Tarjeta from '../../../components/panel/Tarjeta.astro';
 import Vacio from '../../../components/panel/Vacio.astro';
 import Panel from '../../../layouts/Panel.astro';
-import { leer } from '../../../lib/api';
-import { ENTREGAS, ESTADOS, PAGOS, fecha, pesos } from '../../../lib/panel';
+import { api, leer } from '../../../lib/api';
+import { CANALES, ENTREGAS, ESTADOS, PAGOS, errorDe, fecha, pesos } from '../../../lib/panel';
 
 export const prerender = false;
+
+// «Confirmar transferencia» desde la fila: el mismo cambio de estado que el botón del detalle.
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r = await api(Astro.request, `/api/admin/pedidos/${Number(f.get('id'))}/estado`, { estado: 'pagado', nota: 'Transferencia confirmada desde la lista' });
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}${Astro.url.search}`, 303);
+  error = await errorDe(r);
+}
 
 const estado = Astro.url.searchParams.get('estado') ?? '';
 const q = Astro.url.searchParams.get('q') ?? '';
 const pagina = Number(Astro.url.searchParams.get('pagina')) || 1;
-const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), pagina: String(pagina) });
-const pedidos = await leer<any[]>(Astro.request, `/api/admin/pedidos?${consulta}`);
+// Período: desde el comienzo de hoy (hora de Argentina) o los últimos 7 / 30 días.
+const PERIODOS = [['', 'Todo'], ['hoy', 'Hoy'], ['7', '7 días'], ['30', '30 días']] as const;
+const periodo = Astro.url.searchParams.get('periodo') ?? '';
+const desde =
+  periodo === 'hoy' ? `${new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)}T00:00:00-03:00`
+  : periodo === '7' || periodo === '30' ? new Date(Date.now() - Number(periodo) * 86_400_000).toISOString()
+  : '';
+const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...(desde && { desde }), pagina: String(pagina) });
+const [pedidos, conteos] = await Promise.all([leer<any[]>(Astro.request, `/api/admin/pedidos?${consulta}`), leer<Record<string, number>>(Astro.request, '/api/admin/pedidos/conteos')]);
+const totalPedidos = Object.values(conteos).reduce((a, b) => a + b, 0);
 
 const enlace = (cambios: Record<string, string>) => {
-  const p = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...cambios });
+  const p = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...(periodo && { periodo }), ...cambios });
   for (const [clave, valor] of [...p]) if (!valor) p.delete(clave);
   return `/admin/pedidos?${p}`;
 };
@@ -26,27 +46,35 @@ const iconoEntrega: Record<string, any> = { domicilio: Truck, sucursal: MapPin, 
 const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
 ---
 
-<Panel titulo="Ventas">
+<Panel titulo="Ventas" error={error}>
+	<a slot="acciones" href="/admin/pedidos/nuevo" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo pedido</a>
 	<details slot="acciones" class="relative">
 		<summary class="btn btn-secundario"><Download class="size-4" aria-hidden="true" />Exportar</summary>
 		<form method="get" action="/api/admin/pedidos/exportar" class="shadow-theme-lg absolute right-0 z-10 mt-2 w-64 space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-			<label class="etiqueta" for="exp-desde">Desde</label>
-			<input id="exp-desde" type="date" name="desde" value={haceUnMes} required class="campo" />
-			<label class="etiqueta" for="exp-hasta">Hasta</label>
-			<input id="exp-hasta" type="date" name="hasta" value={hoy} required class="campo" />
+			<div data-rango="fecha" data-etiqueta="Fechas">
+				<input type="date" name="desde" value={haceUnMes} required class="campo" />
+				<input type="date" name="hasta" value={hoy} required class="campo" />
+			</div>
 			<button class="btn btn-primario w-full"><Download class="size-4" aria-hidden="true" />Descargar Excel</button>
 		</form>
 	</details>
 
-	<div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-		<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Filtrar por estado">
-			<a href={enlace({ estado: '', pagina: '' })} aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todas</a>
-			{Object.entries(ESTADOS).map(([valor, nombre]) => (
-				<a href={enlace({ estado: valor, pagina: '' })} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}</a>
+	<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Filtrar por estado">
+		<a href={enlace({ estado: '', pagina: '' })} aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todas<Cantidad n={totalPedidos} /></a>
+		{Object.entries(ESTADOS).map(([valor, nombre]) => (
+			<a href={enlace({ estado: valor, pagina: '' })} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}<Cantidad n={conteos[valor]} /></a>
+		))}
+	</nav>
+
+	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+		<nav class="flex gap-2 overflow-x-auto" aria-label="Período">
+			{PERIODOS.map(([valor, nombre]) => (
+				<a href={enlace({ periodo: valor, pagina: '' })} aria-current={periodo === valor ? 'page' : undefined} class:list={['rounded-full border px-3 py-1 text-sm font-medium whitespace-nowrap transition', periodo === valor ? 'border-brand-500 bg-brand-50 text-brand-600' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300']}>{nombre}</a>
 			))}
 		</nav>
-		<form method="get" class="relative lg:w-72" role="search">
+		<form method="get" class="relative sm:w-72" role="search">
 			{estado && <input type="hidden" name="estado" value={estado} />}
+			{periodo && <input type="hidden" name="periodo" value={periodo} />}
 			<Search class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
 			<input type="search" name="q" value={q} placeholder="Número, nombre o email" aria-label="Buscar ventas" class="campo pl-10" />
 		</form>
@@ -55,7 +83,7 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 	<Tarjeta alRas>
 		{pedidos.length === 0 ? <Vacio texto="No hay ventas con este filtro"><ShoppingBag aria-hidden="true" /></Vacio> : (
 			<div class="overflow-x-auto">
-				<table class="min-w-full">
+				<table class="tabla-tarjetas min-w-full">
 					<thead class="border-b border-gray-100">
 						<tr><th class="th">Pedido</th><th class="th">Clienta</th><th class="th">Estado</th><th class="th">Pago y entrega</th><th class="th num">Total</th></tr>
 					</thead>
@@ -64,12 +92,21 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 							const Entrega = iconoEntrega[p.metodo_entrega];
 							const Pago = p.metodo_pago === 'transferencia' ? Landmark : CreditCard;
 							return (
-								<tr class="hover:bg-gray-50">
-									<td class="td"><a href={`/admin/pedidos/${p.id}`} class="text-brand-500 font-medium hover:underline">{p.numero}</a><br /><span class="text-theme-xs text-gray-500">{fecha(p.creado_en)}</span></td>
-									<td class="td"><span class="font-medium text-gray-800">{p.nombre}</span><br /><span class="text-theme-xs text-gray-500">{p.email}</span></td>
+								<tr class="cursor-pointer hover:bg-gray-50" data-href={`/admin/pedidos/${p.id}`}>
+									<td class="td"><a href={`/admin/pedidos/${p.id}`} class="text-brand-500 font-medium hover:underline">{p.numero}</a><br /><span class="text-theme-xs text-gray-500">{fecha(p.creado_en)}</span>
+										{/* En la primera columna para que se vea en el celular, donde la tabla se corta a la derecha. */}
+										{p.estado === 'pendiente_pago' && p.metodo_pago === 'transferencia' && (
+											<form method="post" class="mt-2" data-confirmar={`¿Confirmar que llegó la transferencia de ${p.numero} por ${pesos(p.total_centavos)}?`}>
+												<input type="hidden" name="id" value={p.id} />
+												<button class="btn btn-secundario hover:text-success-600 px-2.5 py-1 text-xs whitespace-nowrap"><Check class="size-4" aria-hidden="true" />Confirmar transferencia</button>
+											</form>
+										)}
+									</td>
+									<td class="td"><span class="font-medium text-gray-800">{p.nombre}</span><br /><span class="text-theme-xs text-gray-500">{sinEmail(p.email) ? p.telefono : p.email}</span></td>
 									<td class="td"><Estado estado={p.estado} /></td>
 									<td class="td">
 										<span class="flex items-center gap-3 text-gray-500">
+											{CANALES[p.canal] && <span title={CANALES[p.canal]}>{p.canal === 'whatsapp' ? <MessageCircle class="size-5 text-purple-500" aria-label={CANALES[p.canal]} /> : p.canal === 'instagram' ? <IconoInstagram class="size-5 text-purple-500" /> : <Hand class="size-5 text-purple-500" aria-label={CANALES[p.canal]} />}</span>}
 											<span title={PAGOS[p.metodo_pago]}><Pago class="size-5" aria-label={PAGOS[p.metodo_pago]} /></span>
 											<span title={ENTREGAS[p.metodo_entrega]}><Entrega class="size-5" aria-label={ENTREGAS[p.metodo_entrega]} /></span>
 										</span>
@@ -91,3 +128,21 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 		</div>
 	)}
 </Panel>
+
+<script src="../../../scripts/rango-fechas.ts"></script>
+<script>
+	// Toda la fila abre el detalle; los enlaces y botones internos siguen yendo a lo suyo.
+	document.querySelectorAll<HTMLTableRowElement>('tr[data-href]').forEach((fila) =>
+		fila.addEventListener('click', (e) => {
+			if ((e.target as HTMLElement).closest('a, button, input, select, label')) return;
+			if (e.ctrlKey || e.metaKey) window.open(fila.dataset.href, '_blank');
+			else location.href = fila.dataset.href!;
+		}),
+	);
+	// Confirmar transferencia: se pregunta antes, porque le manda a la clienta el email de pago aprobado.
+	document.querySelectorAll<HTMLFormElement>('form[data-confirmar]').forEach((f) =>
+		f.addEventListener('submit', (e) => {
+			if (!confirm(f.dataset.confirmar)) e.preventDefault();
+		}),
+	);
+</script>

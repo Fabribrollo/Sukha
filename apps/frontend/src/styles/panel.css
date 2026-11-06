@@ -168,3 +168,58 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Entre pantallas del panel, un fundido corto en lugar del parpadeo de recarga (navegadores que lo soportan). */
+@view-transition {
+  navigation: auto;
+}
+
+/* Aviso «Guardado» flotante: aparece abajo y se va solo a los 3 s, sin empujar la pantalla. */
+.aviso-flotante {
+  animation: aviso-flotante 3.2s ease forwards;
+  pointer-events: none;
+}
+@keyframes aviso-flotante {
+  0% { opacity: 0; transform: translate(-50%, 0.75rem); }
+  8%, 85% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0.5rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aviso-flotante { animation-name: none; animation: aviso-simple 3.2s steps(1) forwards; }
+  @keyframes aviso-simple { 0% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+}
+
+/* Tablas que en el celular pasan a tarjetas (Productos, Ventas, Variantes): cada fila es una tarjeta, la primera celda
+   ocupa el ancho entero y las demás se acomodan debajo, sin desplazar de costado. */
+@media (max-width: 639px) {
+  .tabla-tarjetas thead {
+    display: none;
+  }
+  .tabla-tarjetas,
+  .tabla-tarjetas tbody {
+    display: block;
+  }
+  .tabla-tarjetas tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 1rem;
+    padding: 0.75rem 1rem;
+  }
+  .tabla-tarjetas td {
+    padding: 0;
+  }
+  .tabla-tarjetas td:first-child {
+    flex: 1 1 100%;
+  }
+  .tabla-tarjetas td.num {
+    margin-left: auto;
+  }
+}
+
+/* ───────────── Calendario de rango (flatpickr) con los colores del panel ───────────── */
+.flatpickr-calendar { @apply shadow-theme-lg rounded-xl border border-gray-200 font-sans; }
+.flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange { background: var(--color-brand-500); border-color: var(--color-brand-500); }
+.flatpickr-day.inRange { background: var(--color-brand-50); border-color: var(--color-brand-50); box-shadow: -5px 0 0 var(--color-brand-50), 5px 0 0 var(--color-brand-50); }
+.flatpickr-day.today { border-color: var(--color-brand-300); }
+.flatpickr-day { max-width: none; }

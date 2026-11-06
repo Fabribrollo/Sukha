@@ -1,4 +1,5 @@
 // Utilidades de las páginas del panel: leer formularios, mostrar montos y fechas, nombres de estados.
+import { TRANSICIONES } from '../../../backend/src/compartido';
 
 // ───────────── Formularios ─────────────
 
@@ -54,18 +55,8 @@ export const ESTADOS: Record<string, string> = {
   a_revisar: 'A revisar',
 };
 
-// A qué estados se puede pasar desde cada uno (espejo de la regla del backend, que es la que decide).
-export const SIGUIENTES: Record<string, string[]> = {
-  pendiente_pago: ['pagado', 'cancelado'],
-  pagado: ['en_preparacion', 'reembolsado'],
-  en_preparacion: ['enviado', 'listo_para_retirar', 'reembolsado'],
-  enviado: ['entregado', 'reembolsado'],
-  listo_para_retirar: ['entregado', 'reembolsado'],
-  entregado: ['reembolsado'],
-  cancelado: ['pagado', 'a_revisar'],
-  a_revisar: ['pagado', 'reembolsado', 'cancelado'],
-  reembolsado: [],
-};
+// A qué estados se puede pasar desde cada uno: la misma regla que aplica el backend (apps/backend/src/compartido.ts).
+export const SIGUIENTES: Record<string, string[] | undefined> = TRANSICIONES;
 
 // Texto del botón que lleva a cada estado.
 export const ACCIONES: Record<string, string> = {
@@ -81,6 +72,8 @@ export const ACCIONES: Record<string, string> = {
 
 export const ENTREGAS: Record<string, string> = { domicilio: 'Envío a domicilio', sucursal: 'Envío a sucursal', retiro: 'Retiro en persona' };
 export const PAGOS: Record<string, string> = { mercadopago: 'Mercado Pago', transferencia: 'Transferencia' };
+// Ventas cargadas a mano en el panel (las de la tienda son «web» y no llevan marca).
+export const CANALES: Record<string, string> = { whatsapp: 'WhatsApp', instagram: 'Instagram', otro: 'Venta manual' };
 export const TRANSPORTES: Record<string, string> = { correo_argentino: 'Correo Argentino', andreani: 'Andreani' };
 export const ESTADOS_PRODUCTO: Record<string, string> = { borrador: 'Borrador', publicado: 'Publicado', oculto: 'Oculto' };
 export const MOVIMIENTOS: Record<string, string> = {

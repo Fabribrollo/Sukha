@@ -1,0 +1,24 @@
+---
+// Colección destacada de la portada: foto a un lado y texto con botón al otro. Editable en /admin/portada.
+interface Props {
+  imagen: string;
+  etiqueta?: string;
+  titulo?: string;
+  parrafo?: string;
+  boton?: string;
+  enlace?: string;
+}
+const { imagen, etiqueta, titulo, parrafo, boton, enlace } = Astro.props;
+---
+
+<section class="contenedor mt-16 grid items-center gap-6 md:mt-[120px] md:grid-cols-2 md:gap-24">
+	<div class="foto-vacia -mx-4 aspect-[390/440] overflow-hidden md:mx-0 md:aspect-[4/5]">
+		{imagen && <img data-campo-img src={`/api/imagenes/${imagen}/grande.webp`} alt="" loading="lazy" class="size-full object-cover" />}
+	</div>
+	<div class="flex flex-col items-start gap-5">
+		{etiqueta && <p data-campo="etiqueta" class="text-xs font-medium tracking-[0.28em] uppercase">{etiqueta}</p>}
+		{titulo && <h2 data-campo="titulo" class="text-4xl leading-[1.05] md:text-[56px]">{titulo}</h2>}
+		{parrafo && <p data-campo="parrafo" class="text-suave max-w-md leading-relaxed whitespace-pre-line">{parrafo}</p>}
+		{boton && enlace && <a data-campo="boton" href={enlace} class="boton boton-secundario self-stretch md:self-start">{boton}</a>}
+	</div>
+</section>

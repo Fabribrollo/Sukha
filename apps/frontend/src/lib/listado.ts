@@ -1,8 +1,8 @@
 // Carga de los listados de productos (todos, categoría, colección, ofertas, búsqueda).
 // Los filtros viven en la dirección: ?talle=3&talle=4&color=1&min=10000&max=50000&orden=precio_asc&pagina=2
 // Los precios de la dirección van en pesos (legibles y funcionan sin JavaScript); a la API se mandan en centavos.
-import { leer } from './api';
-import type { Listado } from './formato';
+import { leer, leerDelBorde } from './api';
+import type { Filtros, Listado } from './formato';
 
 // Lo que fija la página y la clienta no puede cambiar con los filtros.
 export type Base = { categoria?: string; coleccion?: string; oferta?: boolean; destacado?: boolean; q?: string };
@@ -53,15 +53,24 @@ export async function cargarListado(request: Request, url: URL, base: Base) {
   if (p.max) q.set('max', String(p.max * 100));
   if (p.orden) q.set('orden', p.orden);
   q.set('pagina', String(p.pagina));
-  const datos = await leer<Listado>(request, `/api/catalogo/productos?${q}`);
+  // Talles, colores y precios a ofrecer: solo los de los productos de esta página (no los de toda la tienda). No dependen
+  // del stock ni de la visita, así que se guardan un minuto en la caché del borde, como los datos de la tienda.
+  const alcance = new URLSearchParams([...q].filter(([clave]) => ['categoria', 'coleccion', 'oferta', 'destacado', 'q'].includes(clave)));
+  const [datos, ofrecidos] = await Promise.all([
+    leer<Listado>(request, `/api/catalogo/productos?${q}`),
+    leerDelBorde<Filtros>(request, `/api/catalogo/filtros?${alcance}`, 60).then((r) => r.datos),
+  ]);
   // Una página que no existe (por ejemplo, ?pagina=9 cuando hay 2) vuelve a la primera en lugar de mostrar "sin resultados".
   const fueraDeRango = p.pagina > 1 && datos.productos.length === 0 && datos.total > 0;
-  return { datos, p, base, filtrado: hayFiltros(p), fueraDeRango };
+  return { datos, p, base, filtrado: hayFiltros(p), fueraDeRango, alcance: { talles: ofrecidos.talles, colores: ofrecidos.colores, precio: ofrecidos.precio } };
 }
 
-// Productos nuevos, para sugerir cuando no hay resultados o en la página 404.
+// Productos nuevos, para sugerir cuando no hay resultados o en la página 404. Son un extra: si fallan, no se muestran.
 export const productosNuevos = (request: Request, cantidad = 4) =>
-  leer<Listado>(request, `/api/catalogo/productos?limite=${cantidad}`).then((r) => r.productos);
+  leer<Listado>(request, `/api/catalogo/productos?limite=${cantidad}`).then(
+    (r) => r.productos,
+    () => [],
+  );
 
 // La dirección actual con algunos parámetros cambiados. Un valor `null` borra el parámetro; un arreglo lo repite.
 // Al cambiar cualquier filtro se vuelve a la página 1.

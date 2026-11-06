@@ -1,0 +1,19 @@
+---
+// Barra fija «Cambios sin guardar · Descartar · Guardar» (como la de Shopify). Aparece cuando cambia algún
+// <form data-pendiente="Nombre"> de la página y los guarda todos juntos: ver scripts/barra-guardado.ts.
+import { Save, Undo2 } from '@lucide/astro';
+---
+
+<div data-barra-guardado hidden role="region" aria-label="Cambios sin guardar" class="shadow-theme-lg fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white px-4 py-3 sm:px-6 lg:left-[280px]">
+	<div class="mx-auto flex max-w-6xl items-center gap-2">
+		<p data-barra-texto role="status" class="min-w-0 flex-1 text-sm font-medium text-gray-700">Cambios sin guardar</p>
+		<button type="button" data-descartar class="btn btn-secundario px-3" title="Descartar los cambios" aria-label="Descartar los cambios"><Undo2 class="size-4" aria-hidden="true" /><span class="hidden sm:inline">Descartar</span></button>
+		<button type="button" data-guardar class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
+	</div>
+</div>
+<!-- Lugar al final de la página para que la barra no tape lo último. -->
+<div class="h-16" aria-hidden="true"></div>
+
+<script>
+	import '../../scripts/barra-guardado';
+</script>

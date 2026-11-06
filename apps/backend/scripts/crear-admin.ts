@@ -21,6 +21,14 @@ if (!destino || !email?.includes('@') || !nombre) {
 
 const rl = createInterface({ input: process.stdin, output: process.stderr });
 const contrasena = (await rl.question('Contraseña (mínimo 12 caracteres, se ve al escribir): ')).trim();
+// En producción se pide confirmar a mano: este comando escribe en la base real.
+if (entorno === 'prod') {
+  const ok = (await rl.question('Esto escribe en la base de PRODUCCIÓN. Escribí "produccion" para seguir: ')).trim().toLowerCase();
+  if (ok !== 'produccion') {
+    console.error('Cancelado: no se tocó nada.');
+    process.exit(1);
+  }
+}
 rl.close();
 if (contrasena.length < 12) {
   console.error('La contraseña tiene que tener al menos 12 caracteres.');

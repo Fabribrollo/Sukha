@@ -1,0 +1,294 @@
+---
+// Hero «Moda real». Escritorio (Costados 3): dos looks a la vez que rotan con CSS solo, el título gigante detrás y abajo una franja con
+// el enlace a la categoría de cada look. Celular (Premium 2): la tapa con el título en dos líneas, el primer look y un botón.
+// Editable en /admin/portada; las fotos van recortadas, sin fondo. Con 1 o 2 looks no rota: se ven todos juntos.
+interface Look {
+  imagen: string;
+  descripcion?: string;
+  categoria?: string;
+  enlace?: string;
+}
+interface Props {
+  titulo?: string;
+  etiqueta?: string;
+  producto?: string;
+  boton?: string;
+  enlace?: string;
+  looks: Look[];
+}
+const { titulo = '', etiqueta, producto, boton, enlace, looks } = Astro.props;
+const rota = looks.length === 3;
+// En el tren de escritorio: con 3 looks se repiten los dos primeros al final, para que el ciclo cierre sin saltos.
+const tren = rota ? [...looks, looks[0], looks[1]] : looks;
+const foto = (clave: string, tamano: 'grande' | 'mediano') => `/api/imagenes/${clave}/${tamano}.webp`;
+// Los enlaces de abajo: a la izquierda el look de turno, a la derecha el siguiente. Cada fila lleva su propio enlace.
+const izquierda = rota ? [looks[0], looks[1], looks[2], looks[0]] : looks.slice(0, 1);
+const derecha = rota ? [looks[1], looks[2], looks[0], looks[1]] : looks.slice(1, 2);
+const conCategoria = (l: Look) => Boolean(l.categoria && l.enlace);
+---
+
+<section class="hero-fondo bg-hero text-texto relative overflow-hidden" aria-label={titulo || 'Moda real'} data-rota={rota ? '' : undefined}>
+	<div class="hero">
+	{etiqueta && <p data-campo="etiqueta" aria-hidden="true" class="hero-etiqueta absolute right-0 left-0 z-[4] m-0 text-center text-[11px] tracking-[0.32em] uppercase md:hidden">{etiqueta}</p>}
+	{titulo && <h1 data-campo="titulo" class="hero-titulo font-serif">{titulo}</h1>}
+
+	{/* Escritorio: el tren de looks. */}
+	<div class="hero-pista">
+		<div class:list={['hero-tren', rota && 'hero-tren-rota']} style={`--n:${tren.length};--pantalla:${Math.min(2, tren.length)}`}>
+			{tren.map((l, i) => (
+				<div class="hero-slide" aria-hidden={i >= looks.length ? 'true' : undefined}>
+					<img aria-hidden="true" class="hero-sombra" src={foto(l.imagen, 'grande')} alt="" loading={i < 2 ? 'eager' : 'lazy'} />
+					<img class="hero-look" src={foto(l.imagen, 'grande')} alt={i >= looks.length ? '' : l.descripcion ?? ''} loading={i < 2 ? 'eager' : 'lazy'} fetchpriority={i === 0 ? 'high' : undefined} />
+				</div>
+			))}
+		</div>
+	</div>
+
+	{/* Celular: el primer look, fijo. */}
+	<div class="hero-tapa" aria-hidden="true">
+		<img class="hero-sombra" src={foto(looks[0].imagen, 'mediano')} alt="" />
+		<img class="hero-look" src={foto(looks[0].imagen, 'mediano')} alt="" />
+	</div>
+
+	{(producto || (boton && enlace)) && (
+		<div class="hero-pie-celular md:hidden">
+			{producto && <p data-campo="producto" class="m-0 text-[15px]">{producto}</p>}
+			{boton && enlace && <a data-campo="boton" href={enlace} class="boton boton-primario w-full">{boton}</a>}
+		</div>
+	)}
+
+	</div>
+
+	{izquierda.some(conCategoria) && (
+		<div class="hero-franja">
+			<div class="hero-cat" data-rota={rota ? '' : undefined}>
+				<span class:list={['hero-roda', rota && 'hero-roda-rota']}>
+					{izquierda.map((l, i) => (conCategoria(l) ? <a href={l.enlace} class="hero-fila" tabindex={i === 0 ? undefined : -1}><span>{l.categoria}</span><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 12h14M13 6l6 6-6 6" /></svg></a> : <span class="hero-fila"></span>))}
+				</span>
+			</div>
+			{rota && <div aria-hidden="true" class="hero-marcas"><span><i></i></span><span><i style="animation-delay:5s"></i></span><span><i style="animation-delay:10s"></i></span></div>}
+			{derecha.some(conCategoria) && (
+				<div class="hero-cat hero-cat-der">
+					<span class:list={['hero-roda', rota && 'hero-roda-rota']}>
+						{derecha.map((l, i) => (conCategoria(l) ? <a href={l.enlace} class="hero-fila" tabindex={i === 0 ? undefined : -1}><span>{l.categoria}</span><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 12h14M13 6l6 6-6 6" /></svg></a> : <span class="hero-fila"></span>))}
+					</span>
+				</div>
+			)}
+		</div>
+	)}
+</section>
+
+<style>
+	/* El hero incluye la zona de la cabecera: la cabecera se dibuja encima (ver Cabecera.astro, «superpuesta»). Medidas del canvas. */
+	/* ───────────── Celular (Premium 2) ───────────── */
+	.hero {
+		--k: min(100vw, 1440px); /* ancho de la escena: el canvas mide 1440 */
+		position: relative;
+		margin: 0 auto;
+		height: clamp(600px, calc(100svh - 38px), 844px);
+	}
+	.hero-titulo {
+		position: absolute;
+		z-index: 1;
+		inset: 84px 0 auto 0;
+		margin: 0 auto;
+		width: min-content; /* una palabra por línea: MODA / REAL */
+		text-align: center;
+		font-weight: 400;
+		font-size: 31.8vw;
+		line-height: 0.84;
+		letter-spacing: -0.045em;
+	}
+	.hero-etiqueta {
+		top: 66px !important;
+	}
+	.hero-pista {
+		display: none;
+	}
+	.hero-tapa {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		pointer-events: none;
+	}
+	.hero-tapa .hero-look,
+	.hero-tapa .hero-sombra {
+		position: absolute;
+		left: 50%;
+		bottom: 0;
+		height: 71%;
+		max-width: none;
+		transform: translateX(-50%);
+	}
+	.hero-sombra {
+		position: absolute;
+		opacity: 0.28;
+		filter: brightness(0) saturate(100%) invert(36%) sepia(53%) saturate(820%) hue-rotate(345deg) brightness(88%);
+	}
+	.hero-tapa .hero-sombra {
+		transform: translateX(calc(-50% + 18px));
+	}
+	.hero-pie-celular {
+		position: absolute;
+		z-index: 5;
+		inset: auto 0 0 0;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 16px 20px 24px;
+		background: var(--color-hero);
+		border-top: 1px solid rgb(30 28 25 / 0.18);
+	}
+	.hero-franja {
+		display: none;
+	}
+
+	/* ───────────── Escritorio (Costados 3) ───────────── */
+	@media (min-width: 768px) {
+		.hero {
+			width: var(--k);
+			height: calc(var(--k) * 0.625); /* 1440 × 900 */
+		}
+		.hero-titulo {
+			inset: calc(var(--k) * 0.089) 0 auto 0;
+			width: auto;
+			white-space: nowrap;
+			font-size: calc(var(--k) * 0.15);
+		}
+		.hero-tapa {
+			display: none;
+		}
+		.hero-pista {
+			display: block;
+			position: absolute;
+			z-index: 3;
+			inset: 0 0 0 0;
+			overflow: hidden;
+			pointer-events: none;
+		}
+		.hero-tren {
+			position: absolute;
+			inset: 0 auto 0 0;
+			width: calc(var(--n) * 50%);
+			display: flex;
+		}
+		/* Con 1 o 2 looks no hay tren que mover: se reparten el ancho. */
+		.hero-tren:not(.hero-tren-rota) {
+			width: 100%;
+		}
+		.hero-slide {
+			--dx: -50%;
+			position: relative;
+			flex: 0 0 calc(100% / var(--n));
+			height: 100%;
+		}
+		.hero-tren:not(.hero-tren-rota) .hero-slide {
+			flex-basis: calc(100% / var(--pantalla));
+		}
+		.hero-slide .hero-look,
+		.hero-slide .hero-sombra {
+			position: absolute;
+			left: 50%;
+			bottom: 0;
+			height: 82%;
+			max-width: none;
+			transform: translateX(var(--dx));
+		}
+		.hero-slide .hero-sombra {
+			transform: translateX(calc(var(--dx) + 24px));
+		}
+		.hero-tren-rota {
+			animation: hero-carrusel 15s infinite;
+			width: 250%;
+		}
+		.hero-tren-rota .hero-slide {
+			flex-basis: 20%;
+		}
+		.hero-pie-celular {
+			display: none;
+		}
+		.hero-franja {
+			position: absolute;
+			z-index: 5;
+			inset: auto 0 0 0;
+			height: calc(min(100vw, 1440px) * 0.075);
+			box-sizing: border-box;
+			padding: 0 max(3.9vw, calc((100% - 1440px) / 2 + 56px));
+			display: flex;
+			align-items: center;
+			gap: 24px;
+			background: var(--color-hero);
+			border-top: 1px solid rgb(30 28 25 / 0.25);
+		}
+		.hero-cat {
+			flex: 1;
+			height: calc(min(100vw, 1440px) * 0.0444);
+			overflow: hidden;
+		}
+		.hero-cat-der {
+			padding-left: 24px;
+		}
+		.hero-roda {
+			display: block;
+		}
+		.hero-fila {
+			height: calc(min(100vw, 1440px) * 0.0444);
+			display: flex;
+			align-items: center;
+			gap: 14px;
+			font-family: var(--font-serif);
+			font-size: calc(min(100vw, 1440px) * 0.0236);
+			line-height: 1;
+			letter-spacing: -0.02em;
+		}
+		.hero-roda-rota {
+			animation: hero-texto 15s infinite;
+		}
+		.hero-marcas {
+			display: flex;
+			gap: 8px;
+		}
+		.hero-marcas span {
+			display: block;
+			width: 40px;
+			height: 2px;
+			background: rgb(30 28 25 / 0.2);
+			overflow: hidden;
+		}
+		.hero-marcas i {
+			display: block;
+			height: 100%;
+			background: var(--color-texto);
+			transform: scaleX(0);
+			transform-origin: left;
+			animation: hero-marca 15s infinite linear;
+		}
+		@media (prefers-reduced-motion: reduce) {
+			.hero-tren-rota,
+			.hero-roda-rota,
+			.hero-marcas i {
+				animation: none;
+			}
+		}
+	}
+	/* Cada look se queda un rato y el tren avanza un paso (el 20 % del tren = un look). */
+	@keyframes hero-carrusel {
+		0%, 26% { transform: translateX(0); animation-timing-function: cubic-bezier(0.77, 0, 0.18, 1); }
+		33.3%, 59.3% { transform: translateX(-20%); animation-timing-function: cubic-bezier(0.77, 0, 0.18, 1); }
+		66.6%, 92.6% { transform: translateX(-40%); animation-timing-function: cubic-bezier(0.77, 0, 0.18, 1); }
+		99.9% { transform: translateX(-60%); }
+		100% { transform: translateX(0); }
+	}
+	@keyframes hero-texto {
+		0%, 26% { transform: translateY(0); animation-timing-function: cubic-bezier(0.77, 0, 0.18, 1); }
+		33.3%, 59.3% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.77, 0, 0.18, 1); }
+		66.6%, 92.6% { transform: translateY(-50%); animation-timing-function: cubic-bezier(0.77, 0, 0.18, 1); }
+		99.9% { transform: translateY(-75%); }
+		100% { transform: translateY(0); }
+	}
+	@keyframes hero-marca {
+		0% { transform: scaleX(0); }
+		33.3% { transform: scaleX(1); }
+		33.4%, 100% { transform: scaleX(0); }
+	}
+</style>

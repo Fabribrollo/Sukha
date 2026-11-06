@@ -9,7 +9,7 @@
     "dev:frontend": "npm run dev -w @sukha/frontend",
     "db:migrate": "npm run db:migrate -w @sukha/backend",
     "build": "npm run build -w @sukha/frontend",
-    "check": "npm run check -w @sukha/backend && npm run build -w @sukha/frontend",
+    "check": "npm run check -w @sukha/backend && npm run check -w @sukha/frontend && npm run build -w @sukha/frontend",
     "db:seed": "npm run db:seed -w @sukha/backend"
   },
   "allowScripts": {

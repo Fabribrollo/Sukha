@@ -2,3 +2,10 @@
 RESEND_API_KEY=
 MP_ACCESS_TOKEN=
 MP_WEBHOOK_SECRET=
+
+# Cotización automática con MiCorreo (opcional; sin estos datos se usa la tabla de zonas).
+# MICORREO_URL: pruebas https://apitest.correoargentino.com.ar/micorreo/v1 o producción https://api.correoargentino.com.ar/micorreo/v1
+MICORREO_URL=
+MICORREO_USUARIO=
+MICORREO_CLAVE=
+MICORREO_CUSTOMER_ID=

@@ -4,6 +4,7 @@ import '../styles/tienda.css';
 import CarritoLateral from '../components/tienda/CarritoLateral.tsx';
 import Cabecera from '../components/tienda/Cabecera.astro';
 import Pie from '../components/tienda/Pie.astro';
+import { REGLAS_PRECARGA } from '../lib/precarga.mjs';
 import { canonica as canonicaDe, datosDeLaTienda } from '../lib/tienda';
 
 interface Props {
@@ -16,6 +17,10 @@ interface Props {
   noindex?: boolean;
   // Tipo de página para Open Graph.
   tipo?: 'website' | 'product';
+  // La portada ya tiene su sección de newsletter: el pie no la repite.
+  conNewsletter?: boolean;
+  // La página empieza con un hero: la cabecera va encima, transparente.
+  superpuesta?: boolean;
 }
 const {
   titulo,
@@ -24,9 +29,13 @@ const {
   canonica = canonicaDe(Astro.url),
   noindex = false,
   tipo = 'website',
+  conNewsletter = false,
+  superpuesta = false,
 } = Astro.props;
-const { tienda, filtros } = await datosDeLaTienda(Astro.request);
-const tituloCompleto = titulo.includes('Sukhä') ? titulo : `${titulo} | Sukhä`;
+const { tienda, filtros, menu } = await datosDeLaTienda(Astro.request);
+// El nombre de la tienda sale de Configuración; en el código las páginas siguen diciendo "Sukhä".
+const nombre = tienda.titulo;
+const tituloCompleto = titulo.includes('Sukhä') ? titulo.replaceAll('Sukhä', nombre) : `${titulo} | ${nombre}`;
 const imagenAbsoluta = imagen ? new URL(imagen, Astro.url.origin).toString() : undefined;
 ---
 
@@ -35,12 +44,15 @@ const imagenAbsoluta = imagen ? new URL(imagen, Astro.url.origin).toString() : u
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Figtree:wght@300..700&display=swap" />
 		<title>{tituloCompleto}</title>
-		<meta name="description" content={descripcion} />
+		<meta name="description" content={descripcion.replaceAll('Sukhä', nombre)} />
 		<link rel="canonical" href={canonica} />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href={tienda.favicon ?? "/favicon.svg"} />
 		{noindex && <meta name="robots" content="noindex" />}
-		<meta property="og:site_name" content="Sukhä" />
+		<meta property="og:site_name" content={nombre} />
 		<meta property="og:locale" content="es_AR" />
 		<meta property="og:type" content={tipo} />
 		<meta property="og:title" content={tituloCompleto} />
@@ -49,19 +61,34 @@ const imagenAbsoluta = imagen ? new URL(imagen, Astro.url.origin).toString() : u
 		{imagenAbsoluta && <meta property="og:image" content={imagenAbsoluta} />}
 		<meta name="twitter:card" content={imagenAbsoluta ? 'summary_large_image' : 'summary'} />
 		<slot name="head" />
+		{/* Cambio de página instantáneo (Chrome y Edge): ver lib/precarga.mjs. */}
+		<script type="speculationrules" is:inline set:html={REGLAS_PRECARGA} />
 	</head>
 	<body class="flex min-h-screen flex-col">
 		<a href="#contenido" class="focus:bg-primario focus:text-primario-texto sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2">Saltar al contenido</a>
-		<Cabecera tienda={tienda} filtros={filtros} />
+		<Cabecera tienda={tienda} menu={menu} superpuesta={superpuesta} />
 		<main id="contenido" class="flex-1">
 			<slot />
 		</main>
-		<Pie tienda={tienda} filtros={filtros} />
-		<CarritoLateral client:only="preact" maxPorPedido={tienda.maxUnidadesPorPedido} />
+		<Pie tienda={tienda} filtros={filtros} sinNewsletter={conNewsletter} />
+		<CarritoLateral client:only="preact" maxPorPedido={tienda.maxUnidadesPorPedido} gratisDesdeCentavos={tienda.envioGratisDesdeCentavos} />
+		{/* Estadísticas de visitas sin cookies (Cloudflare Web Analytics), si se cargó el código en Configuración. */}
+		{tienda.analyticsToken && <script is:inline defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={JSON.stringify({ token: tienda.analyticsToken })}></script>}
 	</body>
 </html>
 
 <script>
+	import { carrito } from '../lib/carrito';
+
+	// Una página armada por detrás leyó el carrito antes del clic: al mostrarse, se vuelve a leer por si cambió.
+	document.addEventListener('prerenderingchange', () => {
+		try {
+			carrito.set(JSON.parse(localStorage.getItem('sukha:carrito') ?? '[]'));
+		} catch {
+			/* sin acceso al almacenamiento: queda como estaba */
+		}
+	});
+
 	// Escape cierra el menú del celular.
 	document.addEventListener('keydown', (e) => {
 		const menu = document.getElementById('menu-t') as HTMLInputElement | null;

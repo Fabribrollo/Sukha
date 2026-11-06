@@ -1,0 +1,137 @@
+---
+// Carritos abandonados (como Tiendanube): quien dejó el email en el checkout y no compró aparece acá a los 60 minutos.
+// Se le escribe a mano: Gmail o WhatsApp se abren con el mensaje ya escrito y el link que vuelve a
+// armar su carrito. Ningún email sale solo. Pasa a «Recuperada» sola cuando compra con ese email.
+import { Check, Copy, ImageOff, Mail, MessageCircle, RotateCcw, ShoppingCart, TriangleAlert } from '@lucide/astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import Tarjeta from '../../components/panel/Tarjeta.astro';
+import Vacio from '../../components/panel/Vacio.astro';
+import Panel from '../../layouts/Panel.astro';
+import { api, leer } from '../../lib/api';
+import { errorDe, foto, pesos } from '../../lib/panel';
+import { telefonoWhatsapp } from '../../../../backend/src/compartido';
+
+export const prerender = false;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r = await api(Astro.request, `/api/admin/carritos/${f.get('id')}`, { estado: f.get('estado') }, 'PATCH');
+  if (r.ok) return Astro.redirect(`${Astro.url.pathname}${Astro.url.search}`, 303);
+  error = await errorDe(r);
+}
+
+const filtro = Astro.url.searchParams.get('estado') ?? 'sin_contactar';
+const [todos, plantillas] = await Promise.all([
+  leer<any[]>(Astro.request, '/api/admin/carritos'),
+  leer<{ tipo: string; asunto: string; texto: string }[]>(Astro.request, '/api/admin/plantillas'),
+]);
+// Los textos salen de Emails (plantillas editables), con sus variables reemplazadas.
+const plantilla = (tipo: string) => plantillas.find((p) => p.tipo === tipo)!;
+const completar = (t: string, valores: Record<string, string>) => t.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (todo, k: string) => valores[k] ?? todo);
+const carritos = filtro === 'todos' ? todos : todos.filter((c) => c.estado === filtro);
+const cuenta = (e: string) => todos.filter((c) => c.estado === e).length;
+const PESTANAS = [
+  ['sin_contactar', 'Sin contactar'],
+  ['contactada', 'Contactadas'],
+  ['recuperada', 'Recuperadas'],
+  ['todos', 'Todos'],
+] as const;
+const ESTADOS: Record<string, { texto: string; color: any }> = {
+  sin_contactar: { texto: 'Sin contactar', color: 'ambar' },
+  contactada: { texto: 'Contactada', color: 'azul' },
+  recuperada: { texto: 'Recuperada', color: 'verde' },
+};
+const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
+
+const hace = (iso: string) => {
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutos < 120) return `hace ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  return horas < 48 ? `hace ${horas} h` : `hace ${Math.round(horas / 24)} días`;
+};
+
+// El mensaje (corto: la dirección de Gmail tiene un largo máximo).
+const mensaje = (c: any, tipo = 'carrito_abandonado') => {
+  const link = `${Astro.url.origin}/recuperar/${c.codigo}`;
+  const valores = { nombre: c.nombre ? c.nombre.split(' ')[0] : '', prendas: c.prendas.map((p: any) => p.nombre).slice(0, 3).join(', '), link_carrito: link };
+  const p = plantilla(tipo);
+  // Sin nombre, «Hola !» queda raro: se saca el espacio de más.
+  const limpio = (t: string) => completar(t, valores).replace(/Hola\s+([!,])/g, 'Hola$1');
+  return { asunto: limpio(p.asunto), texto: limpio(p.texto), link };
+};
+const gmail = (c: any) => {
+  const m = mensaje(c);
+  return `https://mail.google.com/mail/?${new URLSearchParams({ view: 'cm', fs: '1', to: c.email, su: m.asunto, body: m.texto })}`;
+};
+const whatsapp = (c: any) => {
+  const n = telefonoWhatsapp(c.telefono);
+  return n && `https://wa.me/${n}?text=${encodeURIComponent(mensaje(c, 'carrito_whatsapp').texto)}`;
+};
+---
+
+<Panel titulo="Carritos abandonados" error={error}>
+	<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-fit" aria-label="Filtrar por estado">
+		{PESTANAS.map(([valor, texto]) => (
+			<a href={`?estado=${valor}`} aria-current={filtro === valor ? 'page' : undefined} class:list={pestana(filtro === valor)}>
+				{texto}{valor !== 'todos' && <span class="ml-1.5 text-gray-400 tabular-nums">{cuenta(valor)}</span>}
+			</a>
+		))}
+	</nav>
+
+	<Tarjeta alRas>
+		{carritos.length === 0 ? <Vacio texto="No hay carritos acá"><ShoppingCart aria-hidden="true" /></Vacio> : (
+			<ul class="divide-y divide-gray-100">
+				{carritos.map((c) => {
+					const wa = whatsapp(c);
+					return (
+						<li class="flex flex-col gap-4 p-5 sm:px-6 lg:flex-row lg:items-center">
+							<div class="min-w-0 flex-1 space-y-2">
+								<p class="flex flex-wrap items-center gap-2">
+									<span class="font-semibold text-gray-900">{c.nombre ?? c.email}</span>
+									<Insignia color={ESTADOS[c.estado].color}>{ESTADOS[c.estado].texto}</Insignia>
+									{!c.conStock && c.estado !== 'recuperada' && <Insignia color="rojo"><TriangleAlert aria-hidden="true" />Sin stock de alguna prenda</Insignia>}
+								</p>
+								<p class="text-sm text-gray-500">{c.nombre ? `${c.email} · ` : ''}{c.telefono ? `${c.telefono} · ` : ''}{hace(c.actualizado_en)}</p>
+								<div class="flex flex-wrap items-center gap-2">
+									{c.prendas.map((p: any) => (
+										<span class:list={['flex items-center gap-2 rounded-lg border bg-white py-1 pr-3 pl-1 text-sm', p.disponible ? 'border-gray-200 text-gray-700' : 'border-error-200 text-error-600']} title={p.disponible ? '' : 'Sin stock'}>
+											{p.foto ? <img src={foto(p.foto)} alt="" class="size-8 rounded object-cover" /> : <span class="flex size-8 items-center justify-center rounded bg-gray-100 text-gray-400"><ImageOff class="size-4" aria-hidden="true" /></span>}
+											{p.cantidad > 1 && `${p.cantidad} × `}{p.nombre}{[p.talle, p.color].filter(Boolean).length > 0 && <span class="text-gray-400"> · {[p.talle, p.color].filter(Boolean).join(' · ')}</span>}
+										</span>
+									))}
+								</div>
+							</div>
+							<p class="text-lg font-semibold text-gray-900 tabular-nums lg:w-32 lg:text-right">{pesos(c.total_centavos)}</p>
+							{c.estado !== 'recuperada' && (
+								<div class="flex flex-wrap items-center gap-2 lg:w-auto">
+									<a href={gmail(c)} target="_blank" rel="noopener" class="btn btn-primario"><Mail class="size-4" aria-hidden="true" />Gmail</a>
+									{wa && <a href={wa} target="_blank" rel="noopener" class="btn btn-secundario"><MessageCircle class="size-4" aria-hidden="true" />WhatsApp</a>}
+									<button type="button" data-copiar={mensaje(c).link} class="btn-icono" title="Copiar el link del carrito" aria-label="Copiar el link del carrito"><Copy class="size-5" aria-hidden="true" /></button>
+									<form method="post">
+										<input type="hidden" name="id" value={c.id} />
+										{c.estado === 'sin_contactar'
+											? <button name="estado" value="contactada" class="btn-icono hover:bg-success-50 hover:text-success-600" title="Marcar como contactada" aria-label="Marcar como contactada"><Check class="size-5" aria-hidden="true" /></button>
+											: <button name="estado" value="sin_contactar" class="btn-icono" title="Volver a sin contactar" aria-label="Volver a sin contactar"><RotateCcw class="size-5" aria-hidden="true" /></button>}
+									</form>
+								</div>
+							)}
+						</li>
+					);
+				})}
+			</ul>
+		)}
+	</Tarjeta>
+</Panel>
+
+<script>
+	// Copiar el link de recuperación: el ícono pasa a una tilde un momento para confirmar.
+	for (const boton of document.querySelectorAll<HTMLButtonElement>('[data-copiar]')) {
+		boton.addEventListener('click', async () => {
+			await navigator.clipboard.writeText(boton.dataset.copiar!);
+			boton.classList.add('text-success-600');
+			boton.title = 'Copiado';
+			setTimeout(() => (boton.classList.remove('text-success-600'), (boton.title = 'Copiar el link del carrito')), 1500);
+		});
+	}
+</script>

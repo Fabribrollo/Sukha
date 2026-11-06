@@ -2,14 +2,14 @@
 // Se usa en la ficha del producto y en el carrito. Recuerda el código postal para el carrito y el checkout.
 import { Home, MapPin, Store, Truck } from 'lucide-preact';
 import { useEffect, useState } from 'preact/hooks';
-import { pesos, type Tienda } from '../../lib/formato';
+import { MENSAJE_PESO_EXCEDIDO, enlaceWhatsapp, pesos, type Tienda } from '../../lib/formato';
 import type { OpcionEnvio } from '../../lib/carrito';
 
 export const CLAVE_CP = 'sukha:cp';
 export const NOMBRES_CORREO: Record<string, string> = { correo_argentino: 'Correo Argentino', andreani: 'Andreani' };
 
 interface Props {
-  tienda: Pick<Tienda, 'retiro'>;
+  tienda: Pick<Tienda, 'retiro' | 'whatsapp'>;
   // Monto de la compra, para mostrar "Gratis" cuando llega al mínimo de la zona.
   subtotalCentavos: number;
   // Si se pasa, al elegir una opción se avisa a quien la usa (el carrito la necesita para calcular el total).
@@ -17,6 +17,8 @@ interface Props {
   // Para elegir una opción (carrito y checkout) o solo informar (ficha).
   elegible?: boolean;
   elegida?: number | null;
+  // Lo que se compra, para cotizar con el peso real (si el correo está conectado). Sin esto, precio de la tabla de zonas.
+  items?: { varianteId: number; cantidad: number }[];
 }
 
 // Guarda y lee el código postal sin romper si el navegador no deja usar localStorage.
@@ -35,9 +37,11 @@ export const guardarCp = (cp: string) => {
   }
 };
 
-export default function CotizadorEnvio({ tienda, subtotalCentavos, alElegir, elegible = false, elegida = null }: Props) {
+export default function CotizadorEnvio({ tienda, subtotalCentavos, alElegir, elegible = false, elegida = null, items }: Props) {
   const [cp, setCp] = useState('');
   const [opciones, setOpciones] = useState<OpcionEnvio[] | null>(null);
+  // El pedido pesa más de 10 kg: no se ofrece envío desde la tienda.
+  const [excede, setExcede] = useState(false);
   const [estado, setEstado] = useState<'libre' | 'buscando' | 'error'>('libre');
   const [error, setError] = useState('');
 
@@ -49,14 +53,15 @@ export default function CotizadorEnvio({ tienda, subtotalCentavos, alElegir, ele
     }
     setEstado('buscando');
     try {
-      const r = await fetch('/api/envios/cotizar', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ codigoPostal: limpio }) });
+      const r = await fetch('/api/envios/cotizar', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ codigoPostal: limpio, items }) });
       const cuerpo = (await r.json()) as any;
       if (!r.ok) throw new Error(cuerpo?.error ?? 'No pudimos calcular el envío.');
       guardarCp(limpio);
-      setOpciones(cuerpo as OpcionEnvio[]);
+      const lista = (Array.isArray(cuerpo) ? cuerpo : cuerpo.opciones) as OpcionEnvio[];
+      setOpciones(lista);
+      setExcede(Boolean(cuerpo.excedePeso));
       setEstado('libre');
       if (alElegir) {
-        const lista = cuerpo as OpcionEnvio[];
         // Si la opción elegida sigue disponible para este código postal, se conserva; si no, se elige la más barata.
         alElegir(lista.find((o) => o.zonaEnvioId === elegida) ?? lista[0] ?? null, limpio);
       }
@@ -79,7 +84,7 @@ export default function CotizadorEnvio({ tienda, subtotalCentavos, alElegir, ele
 
   return (
     <section aria-labelledby="envio-titulo" class="border-linea rounded-tienda border p-4">
-      <h3 id="envio-titulo" class="mb-3 flex items-center gap-2 text-sm font-semibold">
+      <h3 id="envio-titulo" class="mb-3 flex items-center gap-2 text-sm">
         <Truck class="size-5" aria-hidden="true" />
         Calculá el envío
       </h3>
@@ -110,7 +115,14 @@ export default function CotizadorEnvio({ tienda, subtotalCentavos, alElegir, ele
 
       {opciones && (
         <ul class="mt-3 space-y-2" aria-live="polite">
-          {opciones.length === 0 && !tienda.retiro && <li class="text-suave text-sm">Todavía no enviamos a ese código postal. Escribinos y lo vemos.</li>}
+          {excede && (
+            <li class="bg-aviso-fondo text-aviso rounded-tienda p-3 text-sm">
+              Tu pedido pesa más de 10 kg: el envío se cotiza aparte.{' '}
+              {tienda.whatsapp && <a href={enlaceWhatsapp(tienda.whatsapp, MENSAJE_PESO_EXCEDIDO)} target="_blank" rel="noopener" class="font-semibold underline">Consultalo por WhatsApp</a>}
+              {tienda.retiro && ' O retiralo en persona.'}
+            </li>
+          )}
+          {!excede && opciones.length === 0 && !tienda.retiro && <li class="text-suave text-sm">Todavía no enviamos a ese código postal. Escribinos y lo vemos.</li>}
           {opciones.map((o) => {
             const Icono = o.modalidad === 'sucursal' ? MapPin : Home;
             const contenido = (

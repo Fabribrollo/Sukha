@@ -1,0 +1,83 @@
+---
+// Buscadores y redes de un producto, categoría o colección: dirección (slug), título, descripción y (en productos) la foto
+// para compartir, con la vista previa de Google y de WhatsApp al lado, que se actualiza mientras se escribe (scripts/seo.ts).
+// Va dentro del <form> de quien lo usa. Vacíos, el título y la descripción se arman solos: se muestran como sugerencia.
+import { foto } from '../../lib/panel';
+
+interface Props {
+  ruta: 'producto' | 'categoria' | 'coleccion';
+  slug: string;
+  titulo: string | null;
+  descripcion: string | null;
+  tituloAuto: string;
+  descripcionAuto: string;
+  // Solo productos: sus fotos y la elegida para compartir (null = la primera).
+  fotos?: string[];
+  imagen?: string | null;
+  // Imagen de la tarjeta de WhatsApp cuando no hay fotos para elegir (foto de la categoría).
+  imagenFija?: string | null;
+}
+const { ruta, slug, titulo, descripcion, tituloAuto, descripcionAuto, fotos, imagen, imagenFija } = Astro.props;
+const dominio = 'sukhaind.com.ar';
+const elegida = imagen ?? fotos?.[0] ?? imagenFija ?? null;
+---
+
+<div data-seo data-dominio={dominio} data-ruta={ruta} data-slug-original={slug} class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+	<div class="min-w-0 space-y-4">
+		<div>
+			<label class="etiqueta" for={`seo-slug-${ruta}`}>Dirección</label>
+			<div class="flex items-stretch overflow-hidden rounded-lg border border-gray-300 focus-within:border-brand-300 focus-within:ring-3 focus-within:ring-brand-500/10">
+				<span class="flex items-center bg-gray-50 px-3 text-sm whitespace-nowrap text-gray-500">/{ruta}/</span>
+				<input id={`seo-slug-${ruta}`} name="slug" value={slug} required maxlength="120" pattern="[a-z0-9]+(-[a-z0-9]+)*" data-seo-slug class="min-w-0 flex-1 border-0 px-3 text-sm text-gray-800 focus:ring-0 focus:outline-hidden h-11" />
+			</div>
+			<p data-seo-aviso hidden class="bg-warning-50 text-warning-700 mt-2 rounded-lg px-3 py-2 text-sm">La dirección anterior va a mandar sola a la nueva, así no se pierden los links compartidos.</p>
+		</div>
+		<div>
+			<label class="etiqueta flex justify-between" for={`seo-titulo-${ruta}`}>Título en Google <span data-cuenta="60" class="font-normal text-gray-400 tabular-nums"></span></label>
+			<input id={`seo-titulo-${ruta}`} name="seoTitulo" value={titulo ?? ''} maxlength="70" placeholder={tituloAuto} data-seo-titulo class="campo" />
+		</div>
+		<div>
+			<label class="etiqueta flex justify-between" for={`seo-descripcion-${ruta}`}>Descripción <span data-cuenta="155" class="font-normal text-gray-400 tabular-nums"></span></label>
+			<textarea id={`seo-descripcion-${ruta}`} name="seoDescripcion" rows="3" maxlength="200" placeholder={descripcionAuto} data-seo-descripcion class="campo h-auto py-3">{descripcion ?? ''}</textarea>
+		</div>
+		{fotos && fotos.length > 0 && (
+			<fieldset>
+				<legend class="etiqueta">Foto para compartir</legend>
+				<div class="flex flex-wrap gap-2">
+					{fotos.map((clave) => (
+						<label class="cursor-pointer">
+							<input type="radio" name="seoImagen" value={clave} checked={clave === elegida} data-seo-foto={foto(clave, 'mediano')} class="peer sr-only" />
+							<img src={foto(clave)} alt="" class="peer-checked:ring-brand-500 size-16 rounded-lg object-cover ring-2 ring-transparent ring-offset-2 peer-focus-visible:ring-brand-300" />
+						</label>
+					))}
+				</div>
+			</fieldset>
+		)}
+	</div>
+
+	<div class="min-w-0 space-y-4">
+		<div>
+			<p class="etiqueta">Así se ve en Google</p>
+			<div class="rounded-xl border border-gray-200 bg-white p-4">
+				<p class="truncate text-sm text-gray-600"><span class="font-medium text-gray-800">Sukhä</span> · <span data-vista-url></span></p>
+				<p data-vista-titulo class="mt-1 line-clamp-1 text-lg break-words text-[#1a0dab]"></p>
+				<p data-vista-descripcion class="mt-1 line-clamp-2 text-sm text-gray-600"></p>
+			</div>
+		</div>
+		<div>
+			<p class="etiqueta">Así se ve al compartir por WhatsApp</p>
+			<div class="w-full max-w-sm overflow-hidden rounded-xl border border-gray-200 bg-[#f0f2f5]">
+				<img data-vista-foto src={elegida ? foto(elegida, 'mediano') : '/favicon.svg'} alt="" class:list={['w-full bg-white object-cover', elegida ? 'aspect-[1.91/1]' : 'h-24 object-contain p-4']} />
+				<div class="space-y-0.5 p-3">
+					<p data-vista-titulo class="line-clamp-1 text-sm font-semibold text-gray-900"></p>
+					<p data-vista-descripcion class="line-clamp-2 text-xs text-gray-600"></p>
+					<p class="text-xs text-gray-500">{dominio}</p>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+	import '../../scripts/seo';
+</script>

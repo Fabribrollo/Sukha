@@ -1,25 +1,16 @@
+import { TRANSICIONES, type EstadoPedido, sinEmail } from '../compartido';
+import { HORAS_PAGO_PENDIENTE } from '../config';
 import { ErrorApp, violaCheck } from '../utils/errores';
+import { AHORA_SQL } from '../utils/http';
+import { registrar } from '../utils/registro';
 import { leerConfiguracion } from './configuracion.service';
 import { type PedidoCompleto, cargarPedido } from './pedidos.service';
 
-// Máquina de estados del pedido. Antes del pago la única salida es cancelar; después solo avanza o se reembolsa.
-// "a_revisar" es para pagos que llegaron y no se pudieron aplicar solos (reserva vencida sin stock, monto distinto):
-// un pedido en ese estado nunca tiene stock reservado.
-export const TRANSICIONES: Record<string, string[]> = {
-  pendiente_pago: ['pagado', 'cancelado'],
-  pagado: ['en_preparacion', 'reembolsado'],
-  en_preparacion: ['enviado', 'listo_para_retirar', 'reembolsado'],
-  enviado: ['entregado', 'reembolsado'],
-  listo_para_retirar: ['entregado', 'reembolsado'],
-  entregado: ['reembolsado'],
-  cancelado: ['pagado', 'a_revisar'],
-  a_revisar: ['pagado', 'reembolsado', 'cancelado'],
-  reembolsado: [],
-};
+// La máquina de estados (TRANSICIONES) vive en compartido.ts: el panel la usa para ofrecer los botones.
 
 // Devuelve por qué no se puede hacer el cambio, o null si se puede.
 export function motivoBloqueo(de: string, a: string, metodoEntrega: string, numeroSeguimiento: string | null): string | null {
-  if (!TRANSICIONES[de]?.includes(a)) return `Un pedido "${de}" no puede pasar a "${a}".`;
+  if (!TRANSICIONES[de as EstadoPedido]?.includes(a as EstadoPedido)) return `Un pedido "${de}" no puede pasar a "${a}".`;
   if (a === 'enviado' && metodoEntrega === 'retiro') return 'Este pedido es con retiro: no se envía.';
   if (a === 'enviado' && !numeroSeguimiento) return 'Para marcarlo como enviado hace falta el número de seguimiento.';
   if (a === 'listo_para_retirar' && metodoEntrega !== 'retiro') return 'Este pedido es con envío: no se retira.';
@@ -37,7 +28,6 @@ const EMAIL_CLIENTA: Record<string, string> = {
 // Aviso que recibe la dueña.
 const AVISO_ADMIN: Record<string, string> = { pagado: 'aviso_nueva_venta', a_revisar: 'aviso_a_revisar' };
 
-const AHORA_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 export type CambioEstado = {
   a: string;
@@ -45,12 +35,20 @@ export type CambioEstado = {
   nota?: string | null;
   numeroSeguimiento?: string | null;
   devolverStock?: boolean;
+  avisarA?: string | null; // además, el aviso "a revisar" a este email (la nota del cambio es el motivo)
 };
 
 // Aplica un cambio de estado con todos sus efectos (stock, cupón, pagos, historial, emails) en un solo lote.
 // Cada sentencia lleva la condición "el pedido sigue en el estado esperado" y la que cambia el estado va última:
 // si dos cambios llegan a la vez (dos avisos de Mercado Pago, o el vencimiento y un pago), solo uno se aplica.
+// Devuelve el pedido actualizado.
 export async function cambiarEstado(env: Env, pedido: PedidoCompleto, cambio: CambioEstado) {
+  await aplicarEstado(env, pedido, cambio);
+  return cargarPedido(env.DB, { id: pedido.id });
+}
+
+// Lo mismo sin volver a leer el pedido: ahorra 2 consultas cuando quien llama no lo necesita (tarea programada, webhook).
+export async function aplicarEstado(env: Env, pedido: PedidoCompleto, cambio: CambioEstado) {
   const d1 = env.DB;
   const de = pedido.estado;
   const { a } = cambio;
@@ -126,11 +124,12 @@ export async function cambiarEstado(env: Env, pedido: PedidoCompleto, cambio: Ca
         .prepare(`INSERT INTO email_saliente (pedido_id, destinatario, tipo) SELECT ?, ?, ? WHERE ${SIGUE}`)
         .bind(id, destinatario, tipo, id, de),
     );
-  if (EMAIL_CLIENTA[a]) encolar(EMAIL_CLIENTA[a], pedido.email);
+  if (EMAIL_CLIENTA[a] && !sinEmail(pedido.email)) encolar(EMAIL_CLIENTA[a], pedido.email);
   if (AVISO_ADMIN[a]) {
     const { email_avisos } = await leerConfiguracion(d1);
     if (email_avisos) encolar(AVISO_ADMIN[a], email_avisos);
   }
+  if (cambio.avisarA && AVISO_ADMIN[a] !== 'aviso_a_revisar') encolar('aviso_a_revisar', cambio.avisarA);
 
   // Última: el cambio de estado en sí. Si no modifica ninguna fila, otro cambio ganó la carrera.
   sentencias.push(
@@ -147,24 +146,54 @@ export async function cambiarEstado(env: Env, pedido: PedidoCompleto, cambio: Ca
     throw e;
   }
   if (!resultados.at(-1)!.meta.changes) throw new ErrorApp(409, 'El pedido cambió de estado mientras tanto. Volvé a cargarlo.');
-  return cargarPedido(d1, { id });
+  registrar('info', 'cambio_de_estado', { pedido: pedido.numero, de, a, automatico: !cambio.adminId });
+}
+
+// Algo pasó con el pago que no cambia el estado solo (pago doble, contracargo, reembolso desde Mercado Pago):
+// queda una nota en el historial (mismo estado antes y después) y le llega el aviso "a revisar" a la dueña.
+export async function anotarParaRevisar(env: Env, pedido: PedidoCompleto, nota: string) {
+  const d1 = env.DB;
+  const { email_avisos } = await leerConfiguracion(d1);
+  const sentencias = [
+    d1
+      .prepare('INSERT INTO historial_estado (pedido_id, estado_anterior, estado_nuevo, nota) VALUES (?, ?, ?, ?)')
+      .bind(pedido.id, pedido.estado, pedido.estado, nota),
+  ];
+  if (email_avisos) {
+    sentencias.push(
+      d1.prepare("INSERT INTO email_saliente (pedido_id, destinatario, tipo) VALUES (?, ?, 'aviso_a_revisar')").bind(pedido.id, email_avisos),
+    );
+  }
+  await d1.batch(sentencias);
+  registrar('warn', 'pedido_a_revisar', { pedido: pedido.numero, nota });
 }
 
 // Cancela los pedidos cuya reserva venció sin pago. Si Mercado Pago tiene un pago en proceso
-// (por ejemplo, efectivo en Rapipago), se espera su aviso en lugar de cancelar.
+// (por ejemplo, una tarjeta en revisión), se espera su aviso; pasadas HORAS_PAGO_PENDIENTE se cancela igual,
+// se libera el stock y se avisa a la dueña. Si el pago se aprueba después, entra como pago tardío (ver pagos.service).
 export async function vencerReservas(env: Env, limite: number) {
+  const pendiente = `SELECT 1 FROM pago WHERE pedido_id = p.id AND proveedor = 'mercadopago' AND estado = 'pendiente'`;
   const { results } = await env.DB.prepare(
-    `SELECT id FROM pedido p
+    `SELECT id, EXISTS (${pendiente}) AS con_pago_pendiente FROM pedido p
       WHERE estado = 'pendiente_pago' AND reserva_vence_en < ${AHORA_SQL}
-        AND NOT EXISTS (SELECT 1 FROM pago WHERE pedido_id = p.id AND proveedor = 'mercadopago' AND estado = 'pendiente')
+        AND NOT EXISTS (${pendiente} AND creado_en > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${HORAS_PAGO_PENDIENTE} hours'))
       ORDER BY reserva_vence_en LIMIT ?`,
   )
     .bind(limite)
-    .all<{ id: number }>();
+    .all<{ id: number; con_pago_pendiente: number }>();
+  // La configuración se lee una sola vez y solo si hace falta avisar.
+  const avisos = results.some((r) => r.con_pago_pendiente) ? (await leerConfiguracion(env.DB)).email_avisos : null;
   let cancelados = 0;
-  for (const { id } of results) {
+  for (const { id, con_pago_pendiente } of results) {
+    const cambio = con_pago_pendiente
+      ? {
+          a: 'cancelado',
+          nota: `El pago de Mercado Pago siguió pendiente más de ${HORAS_PAGO_PENDIENTE} horas: se canceló el pedido y se liberó el stock.`,
+          avisarA: avisos,
+        }
+      : { a: 'cancelado', nota: 'Reserva vencida sin pago.' };
     try {
-      await cambiarEstado(env, await cargarPedido(env.DB, { id }), { a: 'cancelado', nota: 'Reserva vencida sin pago.' });
+      await aplicarEstado(env, await cargarPedido(env.DB, { id }), cambio);
       cancelados++;
     } catch (e) {
       // Si justo entró el pago, el cambio ya no corresponde: se sigue con los demás.

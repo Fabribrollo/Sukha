@@ -5,21 +5,29 @@
 @plugin '@tailwindcss/forms';
 
 @theme {
-  --color-fondo: #ffffff;
-  --color-texto: #1a1a1a;
-  --color-suave: #6b6b6b;
-  --color-linea: #e5e5e5;
-  --color-gris: #f5f5f5;
-  --color-primario: #1a1a1a;
-  --color-primario-texto: #ffffff;
-  --color-oferta: #d0021b;
-  --color-exito: #1e7e34;
-  --color-aviso: #8a5a00;
-  --color-aviso-fondo: #fff4d6;
+  /* Diseño del canvas: sin color de acento (el color lo ponen las prendas), esquinas rectas y líneas finas. */
+  --color-fondo: #ebeae6;
+  --color-texto: #1e1c19;
+  --color-suave: #67625a;
+  --color-linea: #d2cec6;
+  --color-gris: #f5f4f1;
+  --color-arena: #d9d3c8;
+  --color-primario: #1e1c19;
+  --color-primario-texto: #f5f4f1;
+  --color-oferta: #1e1c19;
+  --color-error: #8c2f23;
+  --color-exito: #1e1c19;
+  --color-aviso: #1e1c19;
+  --color-aviso-fondo: #d9d3c8;
+  /* Banda de color de la portada («Explorá · Chalecos»). */
+  --color-hero: #cdbfae;
+  --color-banda: #a4532f;
+  --color-banda-texto: #f5f1ea;
 
-  --radius-tienda: 4px;
+  --radius-tienda: 0px;
 
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Figtree', system-ui, sans-serif;
+  --font-serif: 'Fraunces', Georgia, serif;
 }
 
 @layer base {
@@ -33,6 +41,8 @@
   h2,
   h3 {
     text-wrap: balance;
+    font-family: var(--font-serif);
+    font-weight: 400;
   }
   /* El foco siempre se ve, con el color del texto. */
   :focus-visible {
@@ -57,18 +67,18 @@
 
 /* Contenedor centrado: 1200px de ancho máximo y 16px de margen lateral. */
 @utility contenedor {
-  @apply mx-auto w-full max-w-[1200px] px-4;
+  @apply mx-auto w-full max-w-[1440px] px-4 md:px-14;
 }
 
 /* ───────────── Botones ───────────── */
 @utility boton {
-  @apply rounded-tienda inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  @apply rounded-tienda inline-flex min-h-[52px] cursor-pointer items-center justify-center gap-2 px-10 text-xs font-medium tracking-[0.24em] uppercase transition disabled:cursor-not-allowed disabled:opacity-50;
 }
 @utility boton-primario {
   @apply bg-primario text-primario-texto hover:opacity-90;
 }
 @utility boton-secundario {
-  @apply text-texto border-linea hover:border-texto border bg-white;
+  @apply text-texto border-texto hover:bg-gris border bg-transparent;
 }
 /* Botón de solo ícono: lleva siempre title y aria-label. 44px, el mínimo cómodo para tocar. */
 @utility boton-icono {
@@ -77,10 +87,10 @@
 
 /* ───────────── Campos ───────────── */
 @utility campo {
-  @apply rounded-tienda border-linea text-texto focus:border-texto focus:ring-texto min-h-12 w-full border bg-white px-4 text-base placeholder:text-suave/70 focus:ring-1;
+  @apply rounded-tienda border-linea text-texto focus:border-texto focus:ring-texto min-h-[52px] w-full border bg-gris px-4 text-base placeholder:text-suave/70 focus:ring-1;
 }
 @utility etiqueta {
-  @apply text-suave mb-1 block text-sm;
+  @apply text-suave mb-2 block text-[13px];
 }
 
 /* ───────────── Piezas ───────────── */
@@ -93,8 +103,13 @@
 }
 /* Fila que se desliza con el dedo, con los elementos que se alinean al soltar. */
 @utility fila-deslizable {
-  @apply -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] md:mx-0 md:px-0;
+  @apply -mx-4 flex scroll-pl-4 snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:scroll-pl-0 [scrollbar-width:none] md:mx-0 md:px-0;
 }
 @utility fila-deslizable-item {
   @apply w-[44%] shrink-0 snap-start sm:w-[30%] md:w-[calc((100%-3rem)/4)];
+}
+
+/* Entre páginas de la tienda, un fundido corto en lugar del parpadeo de recarga (navegadores que lo soportan). */
+@view-transition {
+  navigation: auto;
 }

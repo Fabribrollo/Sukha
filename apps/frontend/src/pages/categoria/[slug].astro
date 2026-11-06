@@ -18,6 +18,6 @@ if (listado.fueraDeRango) return Astro.redirect(conCambios(Astro.url, { pagina: 
 const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(Astro.request);
 ---
 
-<Tienda titulo={titulo} descripcion={`${categoria.nombre} de Sukhä. Envíos a todo el país.`} canonica={canonica(Astro.url, ['pagina'])} noindex={listado.filtrado}>
+<Tienda titulo={categoria.seo?.titulo || titulo} descripcion={categoria.seo?.descripcion || `${categoria.nombre} de Sukhä. Envíos a todo el país.`} canonica={canonica(Astro.url, ['pagina'])} noindex={listado.filtrado}>
 	<Listado titulo={categoria.nombre} migas={migas} atajos={{ padre: padre ?? categoria, actual: categoria.slug, hijas }} {...listado} filtros={filtros} tienda={tienda} sugeridos={sugeridos} />
 </Tienda>

@@ -1,0 +1,49 @@
+---
+// Link de recuperación de un carrito abandonado: vuelve a armar el carrito con las prendas que siguen a la venta (con la
+// cantidad recortada al stock de hoy) y lleva al checkout. No muestra datos de la clienta.
+import Tienda from '../../layouts/Tienda.astro';
+import { api } from '../../lib/api';
+import { jsonLd } from '../../lib/formato';
+
+export const prerender = false;
+
+const r = await api(Astro.request, `/api/carritos/${encodeURIComponent(Astro.params.codigo!)}`);
+const datos = r.ok ? ((await r.json()) as { lineas: unknown[]; faltan: number }) : null;
+---
+
+<Tienda titulo="Tu carrito" noindex>
+	<div class="contenedor py-16 text-center">
+		{datos && datos.lineas.length > 0 ? (
+			<>
+				<h1 class="text-2xl">Estamos armando tu carrito…</h1>
+				<p class="text-suave mt-3">En un segundo te llevamos a terminar la compra.</p>
+				<script type="application/json" id="carrito-recuperado" set:html={jsonLd(datos)} />
+			</>
+		) : (
+			<>
+				<h1 class="text-2xl">{datos ? 'Las prendas de tu carrito ya no están disponibles' : 'Este link ya no está disponible'}</h1>
+				<p class="text-suave mt-3">Mirá las novedades: puede que encuentres algo parecido.</p>
+				<a href="/productos" class="boton boton-primario mt-6">Ver productos</a>
+			</>
+		)}
+	</div>
+</Tienda>
+
+<style is:global>
+	/* Esta página salta enseguida al checkout: con la transición entre páginas el navegador la corta y avisa en la consola. */
+	@view-transition {
+		navigation: none;
+	}
+</style>
+
+<script>
+	import { carrito } from '../../lib/carrito';
+
+	const datos = document.querySelector('#carrito-recuperado');
+	if (datos) {
+		const { lineas, faltan } = JSON.parse(datos.textContent!);
+		carrito.set(lineas);
+		// Si alguna prenda se agotó, el carrito lo avisa; si no, directo al checkout.
+		location.replace(faltan ? '/carrito' : '/checkout');
+	}
+</script>

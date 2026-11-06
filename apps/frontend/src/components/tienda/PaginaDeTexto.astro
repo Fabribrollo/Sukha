@@ -1,28 +1,24 @@
 ---
-// Página de información con texto cargado en el panel. Se parte en párrafos y se escribe como texto, nunca como HTML.
+// Página de información con texto cargado en el panel (o el original de lib/textos.ts si no se editó).
+// Se escribe como texto con formato mínimo, nunca como HTML.
 import Tienda from '../../layouts/Tienda.astro';
-import { datosDeLaTienda, parrafos } from '../../lib/tienda';
+import { datosDeLaTienda } from '../../lib/tienda';
+import { textoDe, type ClaveTexto } from '../../lib/textos';
+import TextoConFormato from './TextoConFormato.astro';
 
 interface Props {
   titulo: string;
   descripcion: string;
   // Clave del texto en `tienda.contenido`.
-  clave: string;
+  clave: Exclude<ClaveTexto, 'contenido_preguntas_frecuentes'>;
 }
 const { titulo, descripcion, clave } = Astro.props;
 const { tienda } = await datosDeLaTienda(Astro.request);
-const texto = parrafos(tienda.contenido[clave]);
 ---
 
 <Tienda titulo={titulo} descripcion={descripcion}>
 	<div class="contenedor max-w-2xl py-8 md:py-12">
-		<h1 class="mb-6 text-2xl font-semibold md:text-3xl">{titulo}</h1>
-		{
-			texto.length ? (
-				<div class="space-y-4 leading-relaxed">{texto.map((p) => <p>{p}</p>)}</div>
-			) : (
-				<p class="text-suave">Estamos preparando esta información. Si tenés dudas, <a href="/contacto" class="underline">escribinos</a>.</p>
-			)
-		}
+		<h1 class="mb-6 text-2xl md:text-3xl">{titulo}</h1>
+		<TextoConFormato texto={textoDe(clave, tienda.contenido)} tienda={tienda} />
 	</div>
 </Tienda>

@@ -14,13 +14,13 @@ Astro.response.status = 404;
 <Tienda titulo="No encontramos esta página" noindex>
 	<div class="contenedor py-16 text-center">
 		<p class="text-suave text-sm font-semibold tracking-widest uppercase">Error 404</p>
-		<h1 class="mt-2 text-3xl font-semibold">No encontramos esta página</h1>
+		<h1 class="mt-2 text-3xl">No encontramos esta página</h1>
 		<p class="text-suave mt-3">Puede que el link esté mal o que el producto ya no esté disponible.</p>
 		<a href="/" class="boton boton-primario mt-6">Volver al inicio</a>
 	</div>
 	{nuevos.length > 0 && (
 		<section class="contenedor" aria-labelledby="sec-nuevos">
-			<h2 id="sec-nuevos" class="mb-5 text-xl font-semibold">Mirá lo nuevo</h2>
+			<h2 id="sec-nuevos" class="mb-5 text-xl">Mirá lo nuevo</h2>
 			<Grilla productos={nuevos} tienda={tienda} />
 		</section>
 	)}
