@@ -66,12 +66,20 @@ export const productos = async (c: C) =>
 export const sitemap = async (c: C) => c.json(await catalogo.datosSitemap(conectar(c.env)));
 export const producto = async (c: C) => c.json(await catalogo.obtenerProducto(conectar(c.env), c.req.param('slug')!));
 
+// Menú de la cabecera ya resuelto (nombres, enlaces y fotos). Con `?borrador=1` y sesión de admin, el borrador del panel
+// (nunca en caché); sin sesión se ignora y sale el menú publicado.
+export async function cabecera(c: C) {
+  const db = conectar(c.env);
+  const pidioBorrador = c.req.query('borrador') === '1';
+  const token = getCookie(c, COOKIE_SESION);
+  const verBorrador = pidioBorrador && Boolean(token && (await sesionVigente(db, token)));
+  const r = c.json(await cabeceraResuelta(db, c.env.DB, verBorrador));
+  if (pidioBorrador) r.headers.set('cache-control', 'no-store');
+  return r;
+}
+
 // Portada: secciones en orden, con sus productos, categorías y banners ya resueltos. Con `?borrador=1` y sesión de admin, la
 // vista previa del borrador; sin sesión se ignora y sale la portada publicada.
-// Menú de la cabecera ya resuelto (nombres, enlaces y fotos).
-export async function cabecera(c: C) {
-  return c.json(await cabeceraResuelta(conectar(c.env), c.env.DB));
-}
 
 export async function portada(c: C) {
   const db = conectar(c.env);

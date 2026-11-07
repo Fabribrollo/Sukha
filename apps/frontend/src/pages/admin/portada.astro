@@ -2,8 +2,9 @@
 // Editor visual de la portada: a la izquierda las secciones (ordenar, ocultar, agregar), en el centro la portada real en una
 // vista previa (escritorio o celular) y a la derecha los campos de lo que se toca. Todo se guarda solo en un borrador y se
 // publica con un botón. La edición vive en scripts/portada.ts; esta página trae los datos y las plantillas con los íconos.
-import { ChevronDown, ChevronUp, Eye, EyeOff, GripVertical, LayoutPanelTop, MousePointerClick, Monitor, Plus, Redo2, Rocket, Smartphone, Trash2, Undo2, Undo, X } from '@lucide/astro';
+import { Eye, EyeOff, GripVertical, LayoutPanelTop, MousePointerClick, Monitor, Plus, Redo2, Rocket, Smartphone, Trash2, Undo2, Undo, X } from '@lucide/astro';
 import Insignia from '../../components/panel/Insignia.astro';
+import TiendaNav from '../../components/panel/TiendaNav.astro';
 import Panel from '../../layouts/Panel.astro';
 import { leer } from '../../lib/api';
 
@@ -25,7 +26,7 @@ const opciones = {
 const json = (x: unknown) => JSON.stringify(x).replace(/</g, '\\u003c');
 ---
 
-<Panel titulo="Portada" ancho>
+<Panel titulo="Editar página" ancho>
 	<Fragment slot="acciones">
 		<span data-estado-borrador hidden={!portadas.borrador}><Insignia color="ambar">Tenés cambios sin publicar</Insignia></span>
 		<span data-estado-publicada hidden={Boolean(portadas.borrador)}><Insignia color="verde">Publicada</Insignia></span>
@@ -35,6 +36,8 @@ const json = (x: unknown) => JSON.stringify(x).replace(/</g, '\\u003c');
 		<button type="button" data-descartar class="btn btn-peligro-suave" hidden={!portadas.borrador}><Undo2 class="size-4" aria-hidden="true" />Descartar cambios</button>
 		<button type="button" data-publicar class="btn btn-primario"><Rocket class="size-4" aria-hidden="true" />Publicar</button>
 	</Fragment>
+
+	<TiendaNav actual="portada" />
 
 	<nav class="flex gap-1 rounded-xl bg-gray-100 p-1 lg:hidden" aria-label="Qué ver">
 		<button type="button" data-ver="secciones" aria-pressed="true" class="flex-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 aria-pressed:bg-white aria-pressed:text-gray-900 aria-pressed:shadow-theme-xs">Secciones</button>
@@ -111,8 +114,6 @@ const json = (x: unknown) => JSON.stringify(x).replace(/</g, '\\u003c');
 				<p data-nombre class="truncate text-sm font-medium text-gray-800"></p>
 				<p data-detalle class="text-theme-xs truncate text-gray-500"></p>
 			</div>
-			<button type="button" data-subir class="btn-icono size-8" title="Subir" aria-label="Subir esta sección"><ChevronUp class="size-4" aria-hidden="true" /></button>
-			<button type="button" data-bajar class="btn-icono size-8" title="Bajar" aria-label="Bajar esta sección"><ChevronDown class="size-4" aria-hidden="true" /></button>
 			<button type="button" data-ojo class="btn-icono size-8" title="Mostrar u ocultar" aria-label="Mostrar u ocultar esta sección"><Eye class="size-4" data-ojo-abierto aria-hidden="true" /><EyeOff class="size-4" data-ojo-cerrado hidden aria-hidden="true" /></button>
 		</li>
 	</template>

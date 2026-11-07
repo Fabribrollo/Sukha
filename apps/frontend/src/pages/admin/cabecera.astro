@@ -1,34 +1,105 @@
 ---
-// Menú de la cabecera de la tienda: qué entradas se ven, en qué orden, con sus paneles expandibles, fotos y versión celular.
-// Todo se arma en el navegador (scripts/cabecera.ts) y se guarda de una vez con «Guardar»; la tienda lo toma en menos de un minuto.
-import { LayoutPanelTop, RotateCcw, Save } from '@lucide/astro';
-import Tarjeta from '../../components/panel/Tarjeta.astro';
+// Editor visual de la cabecera: a la izquierda las entradas del menú (ordenar, ocultar, agregar), en el centro la tienda real en una
+// vista previa (escritorio o celular) y a la derecha los campos de lo que se toca. Todo se guarda solo en un borrador y se publica
+// con un botón (mismo mecanismo que la portada). La edición vive en scripts/cabecera.ts; esta página trae los datos y los íconos.
+import { Eye, EyeOff, GripVertical, LayoutPanelTop, Monitor, MousePointerClick, Plus, Redo2, RotateCcw, Rocket, Smartphone, Trash2, Undo, Undo2, X } from '@lucide/astro';
+import Insignia from '../../components/panel/Insignia.astro';
+import TiendaNav from '../../components/panel/TiendaNav.astro';
 import Panel from '../../layouts/Panel.astro';
+import { leer } from '../../lib/api';
 
 export const prerender = false;
+
+const [cabecera, categorias, colecciones] = await Promise.all([
+  leer<{ config: any | null; borrador: any | null; defecto: any }>(Astro.request, '/api/admin/cabecera'),
+  leer<any[]>(Astro.request, '/api/admin/categorias'),
+  leer<any[]>(Astro.request, '/api/admin/colecciones'),
+]);
+// Se trabaja sobre el borrador si hay; si no, sobre lo publicado (o el menú que arma la tienda sola).
+const inicial = cabecera.borrador ?? cabecera.config ?? cabecera.defecto;
+const json = (x: unknown) => JSON.stringify(x).replace(/</g, '\\u003c');
 ---
 
-<Panel titulo="Cabecera">
-	<div class="max-w-4xl space-y-5">
-		<Tarjeta titulo="Menú de la cabecera">
-			<LayoutPanelTop slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-			<p slot="acciones" data-estado role="status" class="text-theme-xs text-gray-500"></p>
-			<p class="text-theme-sm mb-4 text-gray-500">Elegí qué se ve en el menú, en qué orden y en qué pantalla (escritorio y celular). Las categorías y colecciones con subcategorías abren un panel con fotos.</p>
-			<div id="editor" class="space-y-3" aria-live="polite"><p class="text-theme-sm text-gray-500">Cargando…</p></div>
-			<div id="agregar" class="mt-4 flex flex-wrap gap-2"></div>
-		</Tarjeta>
-		<Tarjeta titulo="Menú del celular · tarjetas de la pantalla principal">
-			<p class="text-theme-sm mb-4 text-gray-500">Hasta dos tarjetas con foto debajo de la lista del menú del celular. Si no cargás ninguna, se usan las primeras subcategorías que tengan foto.</p>
-			<div id="tarjetas-movil" class="space-y-3"></div>
-		</Tarjeta>
+<Panel titulo="Editar página" ancho>
+	<Fragment slot="acciones">
+		<span data-estado-borrador hidden={!cabecera.borrador}><Insignia color="ambar">Tenés cambios sin publicar</Insignia></span>
+		<span data-estado-publicada hidden={Boolean(cabecera.borrador)}><Insignia color="verde">Publicada</Insignia></span>
+		<span data-mensaje role="status" class="text-theme-xs text-gray-500"></span>
+		<button type="button" data-deshacer class="btn-icono" title="Deshacer" aria-label="Deshacer" disabled><Undo class="size-5" aria-hidden="true" /></button>
+		<button type="button" data-rehacer class="btn-icono" title="Rehacer" aria-label="Rehacer" disabled><Redo2 class="size-5" aria-hidden="true" /></button>
+		<button type="button" data-descartar class="btn btn-peligro-suave" hidden={!cabecera.borrador}><Undo2 class="size-4" aria-hidden="true" />Descartar cambios</button>
+		<button type="button" data-publicar class="btn btn-primario"><Rocket class="size-4" aria-hidden="true" />Publicar</button>
+	</Fragment>
+
+	<TiendaNav actual="cabecera" />
+
+	<nav class="flex gap-1 rounded-xl bg-gray-100 p-1 lg:hidden" aria-label="Qué ver">
+		<button type="button" data-ver="secciones" aria-pressed="true" class="flex-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 aria-pressed:bg-white aria-pressed:text-gray-900 aria-pressed:shadow-theme-xs">Menú</button>
+		<button type="button" data-ver="previa" aria-pressed="false" class="flex-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 aria-pressed:bg-white aria-pressed:text-gray-900 aria-pressed:shadow-theme-xs">Vista previa</button>
+	</nav>
+
+	<div data-editor data-tab="secciones" class="group grid grid-cols-1 gap-4 lg:h-[calc(100vh-11rem)] lg:min-h-[32rem] lg:grid-cols-[260px_minmax(0,1fr)_340px]">
+		<!-- Entradas del menú -->
+		<section class="flex min-h-0 flex-col rounded-2xl border border-gray-200 bg-white max-lg:order-2 max-lg:group-data-[tab=previa]:hidden" aria-label="Entradas del menú">
+			<h2 class="flex items-center gap-2 border-b border-gray-100 px-4 py-3 text-sm font-medium text-gray-800"><LayoutPanelTop class="size-4 text-gray-400" aria-hidden="true" />Menú de la cabecera</h2>
+			<ul data-secciones class="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto"></ul>
+			<p data-vacio hidden class="px-4 py-6 text-center text-sm text-gray-500">El menú está vacío. Agregá una entrada.</p>
+			<div class="flex gap-2 border-t border-gray-100 p-3">
+				<select data-tipo-nueva class="campo h-10 min-w-0 flex-1" aria-label="Tipo de entrada nueva">
+					<option value="categoria">Categoría</option>
+					<option value="enlace">Enlace</option>
+					<option value="colecciones">Colecciones</option>
+				</select>
+				<button type="button" data-agregar class="btn btn-secundario h-10 px-3" title="Agregar entrada" aria-label="Agregar entrada"><Plus class="size-4" aria-hidden="true" /></button>
+			</div>
+		</section>
+
+		<!-- Vista previa -->
+		<section class="flex min-h-0 flex-col rounded-2xl border border-gray-200 bg-gray-50 max-lg:order-1 max-lg:group-not-data-[tab=previa]:hidden" aria-label="Vista previa de la cabecera">
+			<div class="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 py-2 rounded-t-2xl">
+				<p class="text-theme-xs flex items-center gap-1.5 text-gray-500"><MousePointerClick class="size-4" aria-hidden="true" />Tocá una parte del menú para editarla</p>
+				<div class="flex rounded-lg border border-gray-200 p-0.5" role="group" aria-label="Tamaño de la vista previa">
+					<button type="button" data-ancho="escritorio" class="btn-icono size-8 aria-pressed:bg-gray-100 aria-pressed:text-gray-800" aria-pressed="false" title="Escritorio" aria-label="Escritorio"><Monitor class="size-4" aria-hidden="true" /></button>
+					<button type="button" data-ancho="celular" class="btn-icono size-8 aria-pressed:bg-gray-100 aria-pressed:text-gray-800" aria-pressed="false" title="Celular" aria-label="Celular"><Smartphone class="size-4" aria-hidden="true" /></button>
+				</div>
+			</div>
+			<div data-caja class="relative min-h-0 flex-1 overflow-hidden max-lg:h-[65vh]">
+				<div data-lienzo class="mx-auto h-full">
+					<iframe data-vista title="Vista previa de la cabecera" src="/?vista-previa=1&editor=cabecera" class="block origin-top-left border-0 bg-white"></iframe>
+				</div>
+			</div>
+		</section>
+
+		<!-- Campos de lo seleccionado -->
+		<section data-panel class="hidden min-h-0 flex-col group-data-[sel]:flex rounded-2xl border border-gray-200 bg-white max-lg:order-3 max-lg:fixed max-lg:inset-x-2 max-lg:bottom-2 max-lg:z-30 max-lg:max-h-[70vh] max-lg:shadow-theme-lg" aria-label="Editar lo seleccionado">
+			<div class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
+				<h2 data-titulo class="truncate text-sm font-medium text-gray-800"></h2>
+				<button type="button" data-cerrar class="btn-icono size-8" title="Cerrar" aria-label="Cerrar"><X class="size-4" aria-hidden="true" /></button>
+			</div>
+			<div data-campos class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"></div>
+			<div data-pie class="flex items-center justify-between gap-2 border-t border-gray-100 p-3">
+				<button type="button" data-borrar class="btn btn-peligro-suave"><Trash2 class="size-4" aria-hidden="true" />Quitar</button>
+				<button type="button" data-visible-panel class="btn btn-secundario"><EyeOff class="size-4" aria-hidden="true" /><span>Ocultar</span></button>
+			</div>
+		</section>
+		<p data-sin-seleccion class="text-theme-sm hidden flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 p-6 text-center text-gray-500 lg:group-not-data-[sel]:flex">
+			<MousePointerClick class="size-8 text-gray-300" aria-hidden="true" />
+			Tocá una entrada del menú en la vista previa o en la lista para cambiar su texto, sus subcategorías y sus fotos.
+		</p>
 	</div>
-	<div class="shadow-theme-lg fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white px-4 py-3 sm:px-6 lg:left-[280px]">
-		<div class="mx-auto flex max-w-4xl items-center gap-2">
-			<p data-aviso class="min-w-0 flex-1 text-sm text-gray-600" role="status"></p>
-			<button type="button" data-restaurar class="btn btn-secundario"><RotateCcw class="size-4" aria-hidden="true" /><span data-restaurar-texto>Restaurar el original</span></button>
-			<button type="button" data-guardar class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
-		</div>
-	</div>
-	<div class="h-16" aria-hidden="true"></div>
+
+	<script type="application/json" id="datos-cabecera" set:html={json({ inicial, defecto: cabecera.defecto, hayBorrador: Boolean(cabecera.borrador), categorias, colecciones })} />
+
+	<!-- Plantilla de una fila de la lista; el script la copia por cada entrada. -->
+	<template id="plantilla-fila">
+		<li data-id class="flex cursor-pointer items-center gap-1 bg-white px-2 py-2.5 aria-selected:bg-brand-25">
+			<button type="button" data-asa class="btn-icono size-8 cursor-grab touch-none active:cursor-grabbing" title="Arrastrar para ordenar (con el teclado, flechas arriba y abajo)" aria-label="Ordenar esta entrada: arrastrar, o flechas arriba y abajo"><GripVertical class="size-4" aria-hidden="true" /></button>
+			<div class="min-w-0 flex-1">
+				<p data-nombre class="truncate text-sm font-medium text-gray-800"></p>
+				<p data-detalle class="text-theme-xs truncate text-gray-500"></p>
+			</div>
+			<button type="button" data-ojo class="btn-icono size-8" title="Mostrar u ocultar" aria-label="Mostrar u ocultar esta entrada"><Eye class="size-4" data-ojo-abierto aria-hidden="true" /><EyeOff class="size-4" data-ojo-cerrado hidden aria-hidden="true" /></button>
+		</li>
+	</template>
 </Panel>
 <script src="../../scripts/cabecera.ts"></script>

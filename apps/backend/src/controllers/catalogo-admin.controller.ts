@@ -4,7 +4,7 @@ import * as catalogo from '../services/catalogo-admin.service';
 import * as cabecera from '../services/cabecera.service';
 import { Cabecera } from '../validations/cabecera.validation';
 import { aCsv, conteosProductos as conteos, stockParaExportar } from '../services/reportes.service';
-import { editarImagen, eliminarImagen, ordenarImagenes, subirImagen } from '../services/imagenes.service';
+import { editarImagen, eliminarImagen, leerOriginal, ordenarImagenes, reemplazarImagen, subirImagen } from '../services/imagenes.service';
 import { quitarFavicon, quitarLogo, subirFavicon, subirLogo } from '../services/logo.service';
 import * as portada from '../services/portada.service';
 import { descartarBorrador, guardarBorrador, leerPortadas, publicarBorrador, subirImagenPortada } from '../services/portada-secciones.service';
@@ -39,6 +39,12 @@ export const eliminarColeccion = async (c: C) => c.json(await catalogo.eliminarC
 export const verCabecera = async (c: C) => c.json(await cabecera.verCabecera(conectar(c.env), c.env.DB));
 export const guardarCabecera = async (c: C) => c.json(await cabecera.guardarCabecera(c.env.DB, await cuerpo(c, Cabecera)));
 export const restaurarCabecera = async (c: C) => c.json(await cabecera.restaurarCabecera(c.env.DB));
+export const guardarBorradorCabecera = async (c: C) => c.json(await cabecera.guardarBorradorCabecera(c.env.DB, await cuerpo(c, Cabecera)));
+export const descartarBorradorCabecera = async (c: C) => c.json(await cabecera.descartarBorradorCabecera(c.env.DB));
+export async function publicarCabecera(c: C) {
+  if (!(await cabecera.publicarBorradorCabecera(c.env.DB))) throw new ErrorApp(409, 'No hay borrador para publicar.');
+  return c.json({ ok: true });
+}
 
 export const listarColecciones = async (c: C) => c.json(await catalogo.listarColecciones(conectar(c.env)));
 export const crearColeccion = async (c: C) =>
@@ -47,7 +53,7 @@ export const editarColeccion = async (c: C) =>
   c.json(await catalogo.editarColeccion(conectar(c.env), idDe(c), await cuerpo(c, v.EdicionColeccion)));
 
 export const listarProductos = async (c: C) =>
-  c.json(await catalogo.listarProductos(conectar(c.env), { estado: c.req.query('estado'), q: c.req.query('q'), marcaId: Number(c.req.query('marca')) || undefined }));
+  c.json(await catalogo.listarProductos(conectar(c.env), { estado: c.req.query('estado'), q: c.req.query('q'), marcaId: Number(c.req.query('marca')) || undefined, categoriaId: Number(c.req.query('categoria')) || undefined }));
 export const conteosProductos = async (c: C) => c.json(await conteos(c.env.DB));
 export const exportarStock = async (c: C) =>
   c.body(aCsv(await stockParaExportar(c.env.DB)), 200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="stock.csv"' });
@@ -69,6 +75,7 @@ export const crearVariante = async (c: C) =>
   );
 export const editarVariante = async (c: C) =>
   c.json(await catalogo.editarVariante(conectar(c.env), idDe(c), await cuerpo(c, v.EdicionVariante)));
+export const borrarVariante = async (c: C) => c.json({ resultado: await catalogo.borrarVariante(c.env.DB, idDe(c)) });
 export const moverStock = async (c: C) =>
   c.json(await catalogo.moverStock(c.env.DB, c.var.adminId, idDe(c), await cuerpo(c, v.MovimientoStock)));
 export const movimientosDeVariante = async (c: C) => c.json(await catalogo.movimientosDeVariante(c.env.DB, idDe(c)));
@@ -80,6 +87,17 @@ export async function subirFoto(c: C) {
   const colorId = Number(form.get('colorId')) || null;
   const textoAlternativo = String(form.get('textoAlternativo') ?? '').trim().slice(0, 200) || null;
   return c.json(await subirImagen(c.env.IMAGENES, conectar(c.env), idDe(c), form, { colorId, textoAlternativo }), 201);
+}
+// La original sin recortar, solo para el panel (nunca en caché ni en la tienda).
+export async function originalDeFoto(c: C) {
+  const original = await leerOriginal(c.env.IMAGENES, conectar(c.env), idDe(c));
+  if (!original) throw new ErrorApp(404, 'Esta foto no tiene original guardado.');
+  return new Response(original, { headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'private, no-store' } });
+}
+export async function reencuadrarFoto(c: C) {
+  const form = await c.req.formData().catch(() => null);
+  if (!form) throw new ErrorApp(400, 'Se esperaba un formulario con los archivos de la foto.');
+  return c.json(await reemplazarImagen(c.env.IMAGENES, conectar(c.env), idDe(c), form));
 }
 export async function subirLogoTienda(c: C) {
   const form = await c.req.formData().catch(() => null);

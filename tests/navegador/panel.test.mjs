@@ -36,7 +36,7 @@ const PANTALLAS = {
   '/admin/productos/carga-rapida': null,
   '/admin/categorias': 'Categorías',
   '/admin/colecciones': null,
-  '/admin/portada': 'Portada',
+  '/admin/portada': 'Editar página',
   '/admin/envios': null,
   '/admin/configuracion': null,
   '/admin/reportes': null,

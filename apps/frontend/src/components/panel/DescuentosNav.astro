@@ -1,0 +1,8 @@
+---
+const { cupones = false } = Astro.props;
+---
+<nav aria-label="Tipo de descuento" class="flex gap-1 rounded-xl bg-gray-100 p-1 sm:w-fit">
+  <a href="/admin/promociones" aria-current={!cupones ? 'page' : undefined} class="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 aria-[current=page]:bg-white aria-[current=page]:text-gray-900">Promociones</a>
+  <a href="/admin/promociones?tipo=cupones" aria-current={cupones ? 'page' : undefined} class="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 aria-[current=page]:bg-white aria-[current=page]:text-gray-900">Cupones</a>
+</nav>
+<p class="text-sm text-gray-500">{cupones ? 'Descuentos con un código al comprar.' : 'Descuentos que se aplican automáticamente.'}</p>

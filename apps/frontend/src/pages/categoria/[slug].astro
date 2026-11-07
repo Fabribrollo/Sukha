@@ -19,5 +19,5 @@ const sugeridos = listado.datos.productos.length ? [] : await productosNuevos(As
 ---
 
 <Tienda titulo={categoria.seo?.titulo || titulo} descripcion={categoria.seo?.descripcion || `${categoria.nombre} de Sukhä. Envíos a todo el país.`} canonica={canonica(Astro.url, ['pagina'])} noindex={listado.filtrado}>
-	<Listado titulo={categoria.nombre} migas={migas} atajos={{ padre: padre ?? categoria, actual: categoria.slug, hijas }} {...listado} filtros={filtros} tienda={tienda} sugeridos={sugeridos} />
+	<Listado inicioEnMigas={false} titulo={categoria.nombre} migas={migas} atajos={{ padre: padre ?? categoria, actual: categoria.slug, hijas }} {...listado} filtros={filtros} tienda={tienda} sugeridos={sugeridos} />
 </Tienda>

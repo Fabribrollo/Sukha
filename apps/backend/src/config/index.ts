@@ -9,9 +9,9 @@ export const DIAS_SESION = 7;
 // ningún subdominio puede pisarla ni leerla.
 export const COOKIE_SESION = '__Host-sesion';
 
-// Tope del cuerpo de un pedido a la API: JSON chico en la tienda; en el panel, una foto son 3 archivos de hasta 2 MB.
+// Tope del cuerpo de un pedido a la API: JSON chico en la tienda; en el panel, una foto son 3 archivos más la original, de hasta 2 MB cada uno.
 export const MAX_BYTES_JSON = 64 * 1024;
-export const MAX_BYTES_SUBIDA = 7 * 1024 * 1024;
+export const MAX_BYTES_SUBIDA = 9 * 1024 * 1024;
 
 export const PRODUCTOS_POR_PAGINA = 24;
 export const TAMANOS_FOTO = ['chico', 'mediano', 'grande'] as const;

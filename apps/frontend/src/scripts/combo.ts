@@ -4,7 +4,7 @@
 //   data-libre                      lo nuevo se usa como texto tal cual, sin crearlo en el servidor (material, cuidados)
 // El <select> original queda oculto y sigue siendo lo que envía el formulario; sin JavaScript se usa tal cual.
 
-type Opcion = { valor: string; texto: string };
+type Opcion = { valor: string; texto: string; hex?: string };
 
 const normal = (texto: string) => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 let serie = 0;
@@ -16,7 +16,7 @@ export function mejorar(select: HTMLSelectElement) {
   const id = `combo-${serie++}`;
   const crearEn = select.dataset.crear;
   const libre = 'libre' in select.dataset;
-  const opciones = (): Opcion[] => [...select.options].filter((o) => !o.disabled).map((o) => ({ valor: o.value, texto: o.text }));
+  const opciones = (): Opcion[] => [...select.options].filter((o) => !o.disabled).map((o) => ({ valor: o.value, texto: o.text, hex: o.dataset.hex }));
 
   const caja = document.createElement('div');
   caja.className = 'relative';
@@ -39,20 +39,33 @@ export function mejorar(select: HTMLSelectElement) {
   entrada.id = `${id}-entrada`;
   if (etiqueta) etiqueta.htmlFor = entrada.id;
 
+  // Colores: el círculo con el tono (opción con data-hex) a la izquierda del nombre elegido.
+  const circulo = document.createElement('span');
+  circulo.className = 'pointer-events-none absolute top-1/2 left-3.5 hidden size-4 -translate-y-1/2 rounded-full border border-gray-200';
+  circulo.setAttribute('aria-hidden', 'true');
+  const pintarCirculo = () => {
+    const hex = select.options[select.selectedIndex]?.dataset.hex;
+    circulo.classList.toggle('hidden', !hex);
+    if (hex) circulo.style.background = hex;
+    entrada.style.paddingLeft = hex ? '2.5rem' : '';
+  };
+
   select.hidden = true;
   select.before(caja);
-  caja.append(entrada, lista, select);
+  caja.append(entrada, circulo, lista, select);
 
   let activa = -1;
   let visibles: (Opcion & { crear?: boolean })[] = [];
   const elegida = () => select.options[select.selectedIndex]?.text ?? '';
   entrada.value = elegida();
+  pintarCirculo();
 
   const cerrar = () => {
     lista.classList.add('hidden');
     entrada.setAttribute('aria-expanded', 'false');
     entrada.removeAttribute('aria-activedescendant');
     entrada.value = elegida();
+    pintarCirculo();
   };
 
   const pintar = (filtro: string) => {
@@ -67,8 +80,13 @@ export function mejorar(select: HTMLSelectElement) {
         li.id = `${id}-${i}`;
         li.setAttribute('role', 'option');
         li.dataset.i = String(i);
-        li.textContent = o.crear ? `+ Agregar "${o.texto}"` : o.texto;
-        li.className = `cursor-pointer px-4 py-2 text-sm ${o.crear ? 'text-brand-500 border-t border-gray-100 font-medium' : 'text-gray-700'}`;
+        if (o.hex) {
+          const punto = document.createElement('span');
+          punto.className = 'size-4 shrink-0 rounded-full border border-gray-200';
+          punto.style.background = o.hex;
+          li.append(punto, o.texto);
+        } else li.textContent = o.crear ? `+ Agregar "${o.texto}"` : o.texto;
+        li.className = `${o.hex ? 'flex items-center gap-2 ' : ''}cursor-pointer px-4 py-2 text-sm ${o.crear ? 'text-brand-500 border-t border-gray-100 font-medium' : 'text-gray-700'}`;
         return li;
       }),
     );

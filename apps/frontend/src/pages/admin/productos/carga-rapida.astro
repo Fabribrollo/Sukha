@@ -15,7 +15,7 @@ const [categorias, colecciones, opciones] = await Promise.all([
   leer<{ talles: any[]; colores: any[]; marcas: any[]; materiales: any[] }>(Astro.request, '/api/admin/opciones'),
 ]);
 const datos = {
-  categorias: categoriasParaElegir(categorias).map((c) => ({ id: c.id, nombre: c.etiqueta })),
+  categorias: categoriasParaElegir(categorias).map((c) => ({ id: c.id, nombre: c.etiqueta, corto: c.corto, padreId: c.padreId })),
   marcas: opciones.marcas.map((m) => ({ id: m.id, nombre: m.nombre })),
   talles: opciones.talles.map((t) => ({ id: t.id, nombre: t.nombre })),
   colores: opciones.colores.map((c) => ({ id: c.id, nombre: c.nombre, hex: c.hex })),

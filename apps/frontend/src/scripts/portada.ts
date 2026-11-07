@@ -1,3 +1,4 @@
+import { confirmar, pedirTexto } from './dialogo-panel';
 // Editor visual de la portada. La portada real se ve en un iframe (/?vista-previa=1&editor=1, con el script public/editor-portada.js):
 // al tocar una sección avisa por mensaje y acá se muestran sus campos. Todo cambio se guarda solo en el borrador y la vista previa
 // se recarga; publicar es un botón aparte. Los datos vienen de la página en #datos-portada; la API es /api/admin/portada.
@@ -211,8 +212,8 @@ function elegir(sel: string | null) {
 
 // ───────────── Lista de secciones ─────────────
 // Al volver a dibujar, el foco se queda en el mismo control de la misma sección: así se puede ordenar con el teclado
-// (flechas sobre el asa, o los botones Subir y Bajar) sin perder el lugar después de cada movimiento.
-const CONTROLES = ['data-asa', 'data-subir', 'data-bajar', 'data-ojo'];
+// (flechas sobre el asa) sin perder el lugar después de cada movimiento.
+const CONTROLES = ['data-asa', 'data-ojo'];
 function dibujarLista() {
   const molde = q<HTMLTemplateElement>('#plantilla-fila');
   const enfocado = document.activeElement instanceof HTMLElement && lista.contains(document.activeElement) ? document.activeElement : null;
@@ -227,17 +228,13 @@ function dibujarLista() {
     fila.classList.toggle('opacity-60', !s.visible);
     q('[data-ojo-abierto]', fila).toggleAttribute('hidden', !s.visible);
     q('[data-ojo-cerrado]', fila).toggleAttribute('hidden', s.visible);
-    q<HTMLButtonElement>('[data-subir]', fila).disabled = i === 0;
-    q<HTMLButtonElement>('[data-bajar]', fila).disabled = i === secciones.length - 1;
     lista.append(fila);
   });
   q('[data-vacio]').hidden = secciones.length > 0;
   if (foco?.id && foco.control) {
     const fila = lista.querySelector<HTMLElement>(`[data-id="${foco.id}"]`);
-    // Si el botón quedó deshabilitado (la sección llegó al borde), el foco pasa a la flecha contraria.
-    const opuesto = foco.control === 'data-subir' ? 'data-bajar' : foco.control === 'data-bajar' ? 'data-subir' : 'data-asa';
     const habilitado = (c: string) => fila?.querySelector<HTMLButtonElement>(`[${c}]:not(:disabled)`);
-    (habilitado(foco.control) ?? habilitado(opuesto) ?? fila?.querySelector<HTMLElement>('[data-asa]'))?.focus();
+    (habilitado(foco.control) ?? fila?.querySelector<HTMLElement>('[data-asa]'))?.focus();
   }
 }
 lista.addEventListener('click', (e) => {
@@ -246,9 +243,7 @@ lista.addEventListener('click', (e) => {
   if (!fila) return;
   const i = secciones.findIndex((s) => s.id === fila.dataset.id);
   if (boton?.hasAttribute('data-asa')) return;
-  if (boton?.hasAttribute('data-subir') && i > 0) cambio('orden', () => ([secciones[i - 1], secciones[i]] = [secciones[i], secciones[i - 1]]), true);
-  else if (boton?.hasAttribute('data-bajar') && i < secciones.length - 1) cambio('orden', () => ([secciones[i + 1], secciones[i]] = [secciones[i], secciones[i + 1]]), true);
-  else if (boton?.hasAttribute('data-ojo')) cambio(`ver:${secciones[i].id}`, () => (secciones[i].visible = !secciones[i].visible), true);
+  if (boton?.hasAttribute('data-ojo')) cambio(`ver:${secciones[i].id}`, () => (secciones[i].visible = !secciones[i].visible), true);
   else if (!boton) elegir(secciones[i].id);
 });
 // Ordenar arrastrando: la lista del DOM manda; se reordena el estado según los ids.
@@ -290,6 +285,8 @@ const tonos = (actual: 'oscuro' | 'claro') =>
   )
     .map(([v, t, ayuda]) => `<label class="has-checked:border-brand-500 has-checked:bg-brand-50 flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 select-none"><input type="radio" name="tono" value="${v}" ${actual === v ? 'checked' : ''} class="text-brand-500 mt-0.5 size-4 border-gray-300" /><span>${t}<span class="text-theme-xs block text-gray-500">${ayuda}</span></span></label>`)
     .join('')}</div></fieldset>`;
+const asaIcono = '<svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+const asaHtml = (nombre: string, tam = 'size-7') => `<button type="button" data-asa class="btn-icono ${tam} cursor-grab touch-none active:cursor-grabbing" title="Arrastrar para ordenar" aria-label="Ordenar ${esc(nombre)}: arrastrar, o flechas arriba y abajo">${asaIcono}</button>`;
 const chip = (valor: string, texto: string, extra = '') => `<li data-chip="${esc(valor)}" class="rounded-lg border border-gray-200 bg-gray-50 p-2"><div class="flex items-center gap-2"><span class="min-w-0 flex-1 truncate text-sm text-gray-700">${esc(texto)}</span>${extra}<button type="button" data-quitar-chip="${esc(valor)}" class="btn-icono size-7" title="Quitar" aria-label="Quitar ${esc(texto)}">${icono.x}</button></div></li>`;
 
 function dibujarPanel() {
@@ -314,8 +311,8 @@ function dibujarPanel() {
               chip(
                 slug,
                 nombreCategoria(slug),
-                `<button type="button" data-subir-chip="${esc(slug)}" class="btn-icono size-7" title="Subir" aria-label="Subir">↑</button><button type="button" data-renombrar="${esc(slug)}" class="btn-icono size-7" title="Cambiar el nombre" aria-label="Cambiar el nombre">✎</button>`,
-              ).replace('</div></li>', `</div><input data-titulo-portada="${esc(slug)}" value="${esc(s.titulos?.[slug] ?? '')}" maxlength="40" placeholder="Título en la portada (opcional)" aria-label="Título en la portada" class="campo mt-2 h-9" /></li>`),
+                `${asaHtml(nombreCategoria(slug))}<button type="button" data-renombrar="${esc(slug)}" class="btn-icono size-7" title="Cambiar el nombre" aria-label="Cambiar el nombre">✎</button>`,
+              ).replace('<li ', `<li data-id="${esc(slug)}" `).replace('</div></li>', `</div><input data-titulo-portada="${esc(slug)}" value="${esc(s.titulos?.[slug] ?? '')}" maxlength="40" placeholder="Título en la portada (opcional)" aria-label="Título en la portada" class="campo mt-2 h-9" /></li>`),
             )
             .join('')}</ul>`
         : `<p class="text-theme-xs text-gray-500">Ahora se muestran todas las categorías principales. Agregá algunas para elegir cuáles y en qué orden.</p>`) +
@@ -378,10 +375,20 @@ function dibujarPanel() {
   html += campo('Se muestra en', `<select name="dispositivo" class="campo">${opcion('todos', 'Computadora y celular', (s.dispositivo ?? 'todos') === 'todos')}${opcion('escritorio', 'Solo en la computadora', s.dispositivo === 'escritorio')}${opcion('celular', 'Solo en el celular', s.dispositivo === 'celular')}</select>`);
   campos.innerHTML = html;
   for (const sel of campos.querySelectorAll<HTMLSelectElement>('select[data-combo]')) mejorar(sel);
+  // Categorías elegidas de una sección: se ordenan arrastrando.
+  const chips = campos.querySelector<HTMLElement>('[data-elegidas]');
+  if (chips && s.tipo === 'categorias')
+    ordenable(chips, {
+      asa: '[data-asa]',
+      guardar: async () => {
+        const orden = [...chips.children].map((li) => (li as HTMLElement).dataset.chip!);
+        cambio('orden-cat', () => (s.categorias = orden), true);
+      },
+    });
 }
 q('[data-cerrar]').addEventListener('click', () => elegir(null));
-q('[data-borrar]').addEventListener('click', () => {
-  if (!elegida || !confirm('¿Quitar esta sección de la portada?')) return;
+q('[data-borrar]').addEventListener('click', async () => {
+  if (!elegida || !await confirmar('¿Quitar esta sección de la portada?')) return;
   const i = secciones.findIndex((s) => s.id === elegida);
   cambio('quitar', () => secciones.splice(i, 1));
   elegida = null;
@@ -458,10 +465,7 @@ campos.addEventListener('click', (e) => {
       const f = s.fuente;
       cambio('quitar-prod', () => (f.ids = f.ids.filter((x) => String(x) !== v)), true);
     }
-  } else if (b.dataset.subirChip !== undefined) {
-    const i = s.categorias!.indexOf(b.dataset.subirChip);
-    if (i > 0) cambio('orden-cat', () => ([s.categorias![i - 1], s.categorias![i]] = [s.categorias![i], s.categorias![i - 1]]), true);
-  } else if (b.hasAttribute('data-todas')) cambio('todas', () => ((s.categorias = []), (s.titulos = {})), true);
+    } else if (b.hasAttribute('data-todas')) cambio('todas', () => ((s.categorias = []), (s.titulos = {})), true);
   else if (b.dataset.renombrar !== undefined) renombrarCategoria(b.dataset.renombrar);
   else if (b.hasAttribute('data-quitar-foto')) cambio(`${s.id}:foto`, () => (s.imagen = ''), true);
   else if (b.hasAttribute('data-col-mas')) cambio('col+', () => s.items!.push({ titulo: '', texto: '' }), true);
@@ -518,7 +522,7 @@ campos.addEventListener('click', (e) => {
 async function renombrarCategoria(slug: string) {
   const c = opciones.categorias.find((x) => x.slug === slug);
   if (!c) return;
-  const nuevo = prompt(`Nuevo nombre de «${c.nombre}».\n\nOjo: cambia el nombre en toda la tienda (menú, listados y filtros). Si solo querés otro título en la portada, usá el campo «Título en la portada».`, c.nombre)?.trim();
+  const nuevo = (await pedirTexto(`Nuevo nombre de «${c.nombre}».\n\nOjo: cambia el nombre en toda la tienda (menú, listados y filtros). Si solo querés otro título en la portada, usá el campo «Título en la portada».`, c.nombre))?.trim();
   if (!nuevo || nuevo === c.nombre) return;
   const r = await fetch(`/api/admin/categorias/${c.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nombre: nuevo }) });
   if (!r.ok) return avisar(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'No se pudo cambiar el nombre.', true);
@@ -556,16 +560,16 @@ async function mostrarBanners() {
     await cargarBanners();
     if (actual()?.tipo !== 'carrusel') return;
   }
-  const tarjeta = (b: Banner, i: number) => `<article data-banner="${b.id}" class="space-y-3 rounded-xl border border-gray-200 p-3 ${b.activo ? '' : 'opacity-70'}">
+  const tarjeta = (b: Banner) => `<article data-id="${b.id}" data-banner="${b.id}" class="space-y-3 rounded-xl border border-gray-200 p-3 ${b.activo ? '' : 'opacity-70'}">
     <div class="flex items-start gap-3"><img src="/api/imagenes/${b.clave}" alt="" class="aspect-[16/6] w-32 rounded-lg bg-gray-100 object-cover" />
-    <div class="ml-auto flex"><button type="button" data-b-subir class="btn-icono size-8" title="Subir" aria-label="Subir banner" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" data-b-bajar class="btn-icono size-8" title="Bajar" aria-label="Bajar banner" ${i === banners!.length - 1 ? 'disabled' : ''}>↓</button><button type="button" data-b-borrar class="btn-icono hover:bg-error-50 hover:text-error-600 size-8" title="Borrar" aria-label="Borrar banner">${icono.x}</button></div></div>
+    <div class="ml-auto flex">${asaHtml('banner', 'size-8')}<button type="button" data-b-borrar class="btn-icono hover:bg-error-50 hover:text-error-600 size-8" title="Borrar" aria-label="Borrar banner">${icono.x}</button></div></div>
     ${campo('Adónde lleva', selectorEnlace('enlace', b.enlace))}
     ${campo('Descripción de la imagen', `<input data-b="textoAlternativo" value="${esc(b.textoAlternativo ?? '')}" maxlength="200" class="campo" />`)}
     <div data-rango="fechahora" data-opcional data-etiqueta="Vigencia" class="grid grid-cols-2 gap-2">${campo('Desde', `<input type="datetime-local" data-b="desde" value="${aCampoFecha(b.desde)}" class="campo" />`)}${campo('Hasta', `<input type="datetime-local" data-b="hasta" value="${aCampoFecha(b.hasta)}" class="campo" />`)}</div>
     <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 select-none"><input type="checkbox" data-b="activo" ${b.activo ? 'checked' : ''} class="text-brand-500 size-4 rounded border-gray-300" />Se muestra</label>
   </article>`;
   campos.innerHTML = `<p class="text-theme-xs text-gray-500">Los banners se guardan y se ven en la tienda apenas los cambiás: no esperan al botón Publicar.</p>
-    ${banners!.length ? banners!.map(tarjeta).join('') : '<p class="text-theme-sm text-gray-500">Todavía no hay banners.</p>'}
+    ${banners!.length ? `<div data-banners class="space-y-3">${banners!.map(tarjeta).join('')}</div>` : '<p class="text-theme-sm text-gray-500">Todavía no hay banners.</p>'}
     <form data-nuevo-banner class="space-y-3 rounded-xl border border-dashed border-gray-300 p-3">
       <p class="text-sm font-medium text-gray-800">Nuevo banner</p>
       ${campo('Imagen para computadora', '<input type="file" name="escritorio" accept="image/*" required class="text-theme-xs block w-full text-gray-500" />')}
@@ -576,6 +580,21 @@ async function mostrarBanners() {
     </form>`;
   for (const sel of campos.querySelectorAll<HTMLSelectElement>('select[data-combo]')) mejorar(sel);
   iniciarRangos(campos);
+  const lista = campos.querySelector<HTMLElement>('[data-banners]');
+  if (lista)
+    ordenable(lista, {
+      asa: '[data-asa]',
+      guardar: async (ids) => {
+        try {
+          await Promise.all(ids.map((x, orden) => (banners!.find((y) => y.id === x)!.orden === orden ? null : pedirBanner('PATCH', x, { orden }))));
+          await cargarBanners();
+          mostrarBanners();
+          recargarVista();
+        } catch (err) {
+          avisar(err instanceof Error ? err.message : 'No se pudo guardar el banner.', true);
+        }
+      },
+    });
 }
 async function pedirBanner(metodo: string, id: number, cuerpo?: unknown) {
   const r = await fetch(`/api/admin/banners/${id}`, { method: metodo, headers: { 'content-type': 'application/json' }, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
@@ -604,14 +623,8 @@ campos.addEventListener('click', async (e) => {
   const id = idBanner(b);
   try {
     if (b.hasAttribute('data-b-borrar')) {
-      if (!confirm('¿Borrar este banner? Se saca de la tienda.')) return;
+      if (!await confirmar('¿Borrar este banner? Se saca de la tienda.')) return;
       await pedirBanner('DELETE', id);
-    } else if (b.hasAttribute('data-b-subir') || b.hasAttribute('data-b-bajar')) {
-      const lista = banners!.map((x) => x.id);
-      const i = lista.indexOf(id);
-      const j = b.hasAttribute('data-b-subir') ? i - 1 : i + 1;
-      [lista[i], lista[j]] = [lista[j], lista[i]];
-      await Promise.all(lista.map((x, orden) => (banners!.find((y) => y.id === x)!.orden === orden ? null : pedirBanner('PATCH', x, { orden }))));
     } else return;
     await cargarBanners();
     mostrarBanners();
@@ -660,7 +673,7 @@ const conAviso = (accion: () => Promise<void>, ok: string) => async () => {
   }
 };
 q('[data-publicar]').addEventListener('click', async () => {
-  if (!confirm('¿Publicar esta portada? Se ve en la tienda apenas la publiques.')) return;
+  if (!await confirmar('¿Publicar esta portada? Se ve en la tienda apenas la publiques.')) return;
   await conAviso(async () => {
     await guardar();
     await pedir('POST', '/publicar');
@@ -668,7 +681,7 @@ q('[data-publicar]').addEventListener('click', async () => {
   }, 'Portada publicada.')();
 });
 q('[data-descartar]').addEventListener('click', async () => {
-  if (!confirm('¿Descartar los cambios sin publicar? Vuelve a la portada publicada.')) return;
+  if (!await confirmar('¿Descartar los cambios sin publicar? Vuelve a la portada publicada.')) return;
   await conAviso(async () => {
     await pedir('DELETE', '/borrador');
     location.reload();

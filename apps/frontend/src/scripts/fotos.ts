@@ -6,10 +6,11 @@
 //   data-tamanos  JSON con los archivos a generar a partir del campo "foto": { "chico": 400, ... } (ancho máximo en px)
 // Los demás campos del formulario (color, texto alternativo, enlace...) se mandan tal cual.
 //   data-aspecto  proporción fija del recorte (ancho / alto); sin esto se elige al recortar
+//   data-guardar-original  ancho máximo (px) con el que se guarda además la foto original sin recortar (campo «original» + «encuadre»)
 //   data-auto    sube apenas se eligen (o se sueltan) las fotos, sin botón
 // Un segundo <input type="file" data-ancho="900"> se convierte por separado y va con su propio nombre.
 
-import { recortar } from './recorte';
+import { recortarConEncuadre } from './recorte';
 import { aWebp } from './webp';
 
 for (const form of document.querySelectorAll<HTMLFormElement>('form[data-subida]')) {
@@ -34,8 +35,9 @@ for (const form of document.querySelectorAll<HTMLFormElement>('form[data-subida]
       // Cada foto elegida se sube por separado, con los mismos datos del formulario.
       let subidas = 0;
       for (const [i, original] of fotos.entries()) {
-        const foto = await recortar(original, { aspecto: form.dataset.aspecto ? Number(form.dataset.aspecto) : undefined, avance: fotos.length > 1 ? `Foto ${i + 1} de ${fotos.length}` : '' });
-        if (!foto) continue; // canceló el recorte de esta foto: no se sube
+        const recorte = await recortarConEncuadre(original, { aspecto: form.dataset.aspecto ? Number(form.dataset.aspecto) : undefined, avance: fotos.length > 1 ? `Foto ${i + 1} de ${fotos.length}` : '' });
+        if (!recorte) continue; // canceló el recorte de esta foto: no se sube
+        const foto = recorte.archivo;
         subidas++;
         decir(`Preparando y subiendo foto ${i + 1} de ${fotos.length}…`);
         const datos = new FormData();
@@ -43,6 +45,11 @@ for (const form of document.querySelectorAll<HTMLFormElement>('form[data-subida]
           if (campo.name && campo.value) datos.set(campo.name, campo.value);
         }
         for (const [nombre, ancho] of Object.entries(tamanos)) datos.set(nombre, await aWebp(foto, ancho), `${nombre}.webp`);
+        // La original sin recortar queda guardada para poder reencuadrar sin perder calidad.
+        if (form.dataset.guardarOriginal) {
+          datos.set('original', await aWebp(original, Number(form.dataset.guardarOriginal)), 'original.webp');
+          datos.set('encuadre', JSON.stringify(recorte.encuadre));
+        }
         for (const extra of form.querySelectorAll<HTMLInputElement>('input[type=file][data-ancho]')) {
           const archivo = extra.files?.[0];
           if (archivo) datos.set(extra.name, await aWebp(archivo, Number(extra.dataset.ancho)), `${extra.name}.webp`);

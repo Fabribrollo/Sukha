@@ -131,6 +131,8 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 
 <script src="../../../scripts/rango-fechas.ts"></script>
 <script>
+ import { confirmar } from '../../../scripts/dialogo-panel';
+ const aprobados = new WeakSet<HTMLFormElement>();
 	// Toda la fila abre el detalle; los enlaces y botones internos siguen yendo a lo suyo.
 	document.querySelectorAll<HTMLTableRowElement>('tr[data-href]').forEach((fila) =>
 		fila.addEventListener('click', (e) => {
@@ -141,8 +143,11 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 	);
 	// Confirmar transferencia: se pregunta antes, porque le manda a la clienta el email de pago aprobado.
 	document.querySelectorAll<HTMLFormElement>('form[data-confirmar]').forEach((f) =>
-		f.addEventListener('submit', (e) => {
-			if (!confirm(f.dataset.confirmar)) e.preventDefault();
+		f.addEventListener('submit', async (e) => {
+      if (aprobados.has(f)) return;
+      e.preventDefault();
+      const boton = e.submitter;
+      if (await confirmar(f.dataset.confirmar ?? '¿Confirmar pago?')) { aprobados.add(f); f.requestSubmit(boton as HTMLButtonElement | null); }
 		}),
 	);
 </script>

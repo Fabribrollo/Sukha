@@ -7,7 +7,6 @@ import {
   FileText,
   FolderTree,
   LayoutPanelTop,
-  PanelTop,
   Sparkles,
   LayoutDashboard,
   LogOut,
@@ -67,10 +66,8 @@ const grupos = [
   {
     nombre: 'Tienda',
     items: [
-      ['/admin/portada', 'Portada', LayoutPanelTop],
-      ['/admin/cabecera', 'Cabecera', PanelTop],
-      ['/admin/promociones', 'Promociones', Tag],
-      ['/admin/cupones', 'Cupones', TicketPercent],
+      ['/admin/portada', 'Editar página', LayoutPanelTop],
+      ['/admin/promociones', 'Promociones y cupones', Tag],
       ['/admin/envios', 'Envíos', Truck],
       ['/admin/emails', 'Emails', Mail],
       ['/admin/textos', 'Textos y legales', FileText],
@@ -79,7 +76,7 @@ const grupos = [
   },
 ] as const;
 const ruta = Astro.url.pathname.replace(/\/$/, '') || '/admin';
-const actual = (href: string) => (href === '/admin' ? ruta === '/admin' : ruta.startsWith(href));
+const actual = (href: string) => (href === '/admin' ? ruta === '/admin' : (ruta.startsWith(href) || (href === '/admin/promociones' && ruta === '/admin/cupones') || (href === '/admin/portada' && ruta === '/admin/cabecera')));
 const admin = Astro.locals.admin;
 ---
 

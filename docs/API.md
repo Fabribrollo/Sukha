@@ -35,6 +35,15 @@ Las fotos se devuelven como una `clave` y las sirve el frontend (el backend no t
 
 Los banners traen la clave completa: `/api/imagenes/{clave}`.
 
+### Subir y reencuadrar fotos de producto (admin)
+
+`POST /api/admin/productos/:id/imagenes` (multipart): `chico`, `mediano`, `grande` (WebP, hasta 2 MB cada uno), `colorId` y `textoAlternativo` opcionales, y, **opcionales y compatibles hacia atrás**:
+- `original`: la foto sin recortar (WebP, máx. ~2000 px, hasta 2 MB). Se guarda una sola vez en KV como `{clave}/original.webp` (+1 escritura) y **nunca se sirve a la tienda** (`/api/imagenes/…/original.webp` da 404); la fila de la foto guarda su clave en `original`.
+- `encuadre`: texto JSON `{"x":0,"y":0,"ancho":1,"alto":1}` (proporciones de la original entre 0 y 1) con el recorte que se aplicó; solo se guarda si viene `original`. Sin recorte: `{"x":0,"y":0,"ancho":1,"alto":1}`.
+Sin esos campos la foto se guarda como siempre (`original` queda en `null`; reencuadrar solo puede achicar).
+
+`GET /api/admin/imagenes/:id/original`: la original (`image/webp`, sin caché) o 404 si la foto no tiene. `PUT /api/admin/imagenes/:id/archivos` (multipart `chico`, `mediano`, `grande` y `encuadre` opcional): reencuadra; guarda archivos nuevos con **clave nueva** (las claves no se reutilizan: caché inmutable), borra los viejos y no toca la original. Las filas de foto del admin traen `original` y `encuadre`; la API pública no.
+
 ## Portada y datos de la tienda
 
 ### `GET /api/portada`

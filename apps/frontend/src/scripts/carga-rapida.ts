@@ -1,3 +1,4 @@
+import { confirmar, pedirTexto } from './dialogo-panel';
 // Carga rápida de productos: una fila por producto (nombre, categoría, marca, precio, peso, fotos) y, al abrirla,
 // materiales y variantes con los mismos selectores con buscador de la edición de productos (talle, color y stock).
 // Todo vive en el navegador: el borrador se guarda solo en IndexedDB (con las fotos ya achicadas) y recién se manda
@@ -8,7 +9,7 @@ import { etiquetaMaterial } from './materiales';
 import { formatearPesos } from './pesos';
 import { aWebp } from './webp';
 
-type Op = { id: number; nombre: string; hex?: string | null };
+type Op = { id: number; nombre: string; hex?: string | null; corto?: string; padreId?: number | null };
 type Foto = { id: string; subida?: boolean };
 type Variante = { id: string; talleId: number | null; colorId: number | null; stock: string };
 type Fila = {
@@ -66,7 +67,8 @@ const idb = <T>(tienda: string, modo: IDBTransactionMode, f: (s: IDBObjectStore)
     }
   });
 
-type Blobs = { chico: Blob; mediano: Blob; grande: Blob };
+// `original`: la foto sin recortar (hasta 2000 px); falta en lo guardado por versiones anteriores.
+type Blobs = { chico: Blob; mediano: Blob; grande: Blob; original?: Blob };
 const miniaturas = new Map<string, string>();
 const fotoGuardada = (id: string) => idb<Blobs>('fotos', 'readonly', (s) => s.get(id));
 async function cargarMiniatura(id: string) {
@@ -162,7 +164,13 @@ function problemas(f: Fila): Problema[] {
 // Cada producto es una tarjeta: arriba lo que lo identifica (foto, nombre, estado); adentro tres secciones con título:
 // Datos, Fotos y Variantes (como la edición de productos, con los mismos selectores con buscador).
 const selector = (attrs: string, lista: Op[], elegido: number | null, vacio: string | null, crear: string, rojo = false) =>
-  `<select ${attrs} data-crear="${crear}" class="campo${rojo ? ' border-error-500' : ''}">${vacio === null ? '<option value="" disabled selected></option>' : `<option value="">${esc(vacio)}</option>`}${lista.map((o) => `<option value="${o.id}" ${o.id === elegido ? 'selected' : ''}>${esc(o.nombre)}</option>`).join('')}</select>`;
+  `<select ${attrs} data-crear="${crear}" class="campo${rojo ? ' border-error-500' : ''}">${vacio === null ? '<option value="" disabled selected></option>' : `<option value="">${esc(vacio)}</option>`}${lista.map((o) => `<option value="${o.id}" ${o.hex ? `data-hex="${esc(o.hex)}"` : ''} ${o.id === elegido ? 'selected' : ''}>${esc(o.corto ?? o.nombre)}</option>`).join('')}</select>`;
+// Categoría en dos pasos: primero la principal y, si tiene subcategorías, la subcategoría (la fila guarda la más específica).
+const padreDe = (f: Fila) => {
+  const c = porId(D.categorias, f.categoriaId);
+  return c ? (c.padreId ?? c.id) : null;
+};
+const hijasDe = (f: Fila) => D.categorias.filter((c) => c.padreId && c.padreId === padreDe(f));
 const svg = (d: string, clase = 'size-5') => `<svg class="${clase}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICONOS = {
   borrar: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
@@ -219,7 +227,8 @@ function htmlFila(f: Fila) {
     'Datos',
     `${campo('Nombre', bloqueada ? texto(f.nombre) : `<input data-c="nombre" value="${esc(f.nombre)}" maxlength="120" class="campo${rojo('nombre') ? ' border-error-500' : ''}" />`)}
     <div class="grid gap-4 sm:grid-cols-2">
-      ${campo('Categoría', bloqueada ? texto(porId(D.categorias, f.categoriaId)?.nombre ?? '') : selector('data-c="categoria" aria-label="Categoría"', D.categorias, f.categoriaId, null, '/api/admin/categorias', rojo('categoria')))}
+      ${campo('Categoría', bloqueada ? texto(porId(D.categorias, f.categoriaId)?.nombre ?? '') : selector('data-c="categoria" aria-label="Categoría"', D.categorias.filter((c) => !c.padreId), padreDe(f), null, '/api/admin/categorias', rojo('categoria')))}
+      ${!bloqueada && hijasDe(f).length ? campo('Subcategoría (opcional)', selector('data-c="subcategoria" aria-label="Subcategoría"', hijasDe(f), f.categoriaId !== padreDe(f) ? f.categoriaId : null, 'Sin subcategoría', '')) : ''}
       ${campo('Marca', bloqueada ? texto(porId(D.marcas, f.marcaId)?.nombre ?? '') : selector('data-c="marca" aria-label="Marca"', D.marcas, f.marcaId, null, '/api/admin/marcas', rojo('marca')))}
       ${campo('Precio', bloqueada ? texto(f.precio) : `<div class="relative"><span class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-sm text-gray-500">$</span><input data-c="precio" data-pesos inputmode="decimal" value="${esc(f.precio)}" class="campo pl-8${rojo('precio') ? ' border-error-500' : ''}" /></div>`)}
       ${campo('Peso (g)', bloqueada ? texto(f.peso) : `<input data-c="peso" inputmode="numeric" value="${esc(f.peso)}" placeholder="Opcional" class="campo${rojo('peso') ? ' border-error-500' : ''}" />`)}
@@ -349,7 +358,7 @@ async function agregarFotos(f: Fila, destino: string, archivos: File[]) {
   for (const archivo of archivos.filter((a) => a.type.startsWith('image/')).slice(0, MAX_FOTOS - lista.length)) {
     decir('Preparando fotos…');
     try {
-      const blobs: Blobs = { chico: await aWebp(archivo, 400), mediano: await aWebp(archivo, 900), grande: await aWebp(archivo, 1600) };
+      const blobs: Blobs = { chico: await aWebp(archivo, 400), mediano: await aWebp(archivo, 900), grande: await aWebp(archivo, 1600), original: await aWebp(archivo, 2000) };
       const id = uid();
       await idb('fotos', 'readwrite', (s) => s.put(blobs, id));
       miniaturas.set(id, URL.createObjectURL(blobs.chico));
@@ -401,11 +410,15 @@ contenedor.addEventListener('change', async (e) => {
   const c = e.target as HTMLInputElement & HTMLSelectElement;
   const f = filaDe(c);
   if (!f) return;
-  if (c.dataset.c === 'categoria' || c.dataset.c === 'marca') {
+  if (c.dataset.c === 'subcategoria') {
+    const padre = padreDe(f);
+    cambio(() => (f.categoriaId = Number(c.value) || padre));
+    redibujar(f);
+  } else if (c.dataset.c === 'categoria' || c.dataset.c === 'marca') {
     const esMarca = c.dataset.c === 'marca';
     const id = recordarOpcion(c, esMarca ? D.marcas : D.categorias);
     cambio(() => (esMarca ? (f.marcaId = id) : (f.categoriaId = id)));
-    if (revisar) redibujar(f);
+    if (revisar || !esMarca) redibujar(f);
     else actualizarMarcas(f);
   } else if ('agregarColeccion' in c.dataset) {
     const id = recordarOpcion(c, D.colecciones);
@@ -455,7 +468,7 @@ contenedor.addEventListener('click', async (e) => {
     redibujar(f);
     programarGuardado();
   } else if (accion === 'borrar') {
-    if (contenido(f) && !confirm('¿Quitar este producto de la carga?')) return;
+    if (contenido(f) && !await confirmar('¿Quitar este producto de la carga?')) return;
     cambio(() => (estado.filas = estado.filas.filter((x) => x !== f)), true);
     if (!estado.filas.length) estado.filas.push(filaNueva());
     await dibujarTodo();
@@ -608,6 +621,10 @@ async function subirFotos(f: Fila) {
     if (!blobs) throw new Error(`Se perdió una foto de «${f.nombre}»: agregala de nuevo.`);
     const datos = new FormData();
     for (const t of ['chico', 'mediano', 'grande'] as const) datos.set(t, blobs[t], `${t}.webp`);
+    if (blobs.original) {
+      datos.set('original', blobs.original, 'original.webp');
+      datos.set('encuadre', JSON.stringify({ x: 0, y: 0, ancho: 1, alto: 1 }));
+    }
     if (colorId) datos.set('colorId', String(colorId));
     decir(`Subiendo fotos de «${f.nombre}»…`);
     const r = await fetch(`/api/admin/productos/${f.servidor!.id}/imagenes`, { method: 'POST', body: datos });
@@ -720,7 +737,7 @@ async function arrancar() {
       await dibujarTodo();
     });
     q('[data-descartar]').addEventListener('click', async () => {
-      if (!confirm('¿Descartar la carga sin terminar? No se puede recuperar.')) return;
+      if (!await confirmar('¿Descartar la carga sin terminar? No se puede recuperar.')) return;
       resolver();
       await idb('estado', 'readwrite', (s) => s.clear());
       await idb('fotos', 'readwrite', (s) => s.clear());

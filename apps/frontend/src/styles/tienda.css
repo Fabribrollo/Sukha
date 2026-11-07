@@ -113,3 +113,153 @@
 @view-transition {
   navigation: auto;
 }
+
+/* ───────────── Movimiento ─────────────
+   Sutil y sin librerías: solo CSS (opacidad, desplazamientos cortos y escala mínima), con una curva suave que frena al final.
+   Todo va dentro de «prefers-reduced-motion: no-preference»; con movimiento reducido no se anima nada.
+   Los estados los marca scripts/menu-tienda.ts (data-cerrando, data-conmuta, data-dir). */
+:root {
+  --ease-suave: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-menu: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Menú del celular: no se puede tabular mientras está cerrado (fuera de pantalla). */
+@media (max-width: 767.98px) {
+  [data-menu-movil] {
+    visibility: hidden;
+    transition:
+      translate 0.5s var(--ease-menu),
+      visibility 0s linear 0.5s;
+  }
+  #menu-t:checked ~ [data-menu-movil] {
+    visibility: visible;
+    transition-delay: 0s;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes m-subir {
+    from { opacity: 0; transform: translateY(14px); }
+  }
+  @keyframes m-fundir {
+    from { opacity: 0; }
+  }
+  @keyframes m-salir {
+    to { opacity: 0; }
+  }
+  @keyframes m-panel-entra {
+    from { clip-path: inset(0 0 100% 0); opacity: 0.5; }
+    to { clip-path: inset(0 0 0 0); opacity: 1; }
+  }
+  @keyframes m-panel-sale {
+    to { opacity: 0; transform: translateY(-8px); }
+  }
+  @keyframes m-entra-der {
+    from { opacity: 0; transform: translateX(32px); }
+  }
+  @keyframes m-entra-izq {
+    from { opacity: 0; transform: translateX(-32px); }
+  }
+
+  /* ── Cabecera, escritorio ── */
+  /* Subrayado que se dibuja de izquierda a derecha al pasar el mouse, al abrir el panel y en la página actual. */
+  [data-cabecera] nav :is([data-menu-abre], [data-menu-sin-panel]) {
+    box-shadow: none;
+    background: linear-gradient(currentColor, currentColor) left bottom / 0 1px no-repeat;
+    transition:
+      background-size 0.45s var(--ease-suave),
+      color 0.2s;
+  }
+  [data-cabecera] nav :is([aria-current='page'], [aria-expanded='true']),
+  [data-cabecera] nav :is([data-menu-abre], [data-menu-sin-panel]):hover {
+    background-size: 100% 1px;
+  }
+
+  /* El panel baja como una cortina corta y su contenido sube escalonado. */
+  [data-menu-fondo]:not([hidden]) { animation: m-fundir 0.35s ease backwards; }
+  [data-panel]:not([hidden]) { animation: m-panel-entra 0.4s var(--ease-suave) backwards; }
+  [data-panel]:not([hidden]) :is(li, .grid > a) {
+    animation: m-subir 0.6s var(--ease-suave) backwards;
+    animation-delay: calc(110ms + var(--i, 0) * 45ms);
+  }
+  [data-panel] :is(li, .grid > a):nth-child(2) { --i: 1; }
+  [data-panel] :is(li, .grid > a):nth-child(3) { --i: 2; }
+  [data-panel] :is(li, .grid > a):nth-child(4) { --i: 3; }
+  [data-panel] :is(li, .grid > a):nth-child(5) { --i: 4; }
+  [data-panel] :is(li, .grid > a):nth-child(n + 6) { --i: 5; }
+  /* De un panel a otro: solo un fundido, sin repetir la cortina. */
+  [data-conmuta] [data-panel]:not([hidden]) { animation: m-fundir 0.22s ease backwards; }
+  [data-conmuta] [data-panel]:not([hidden]) :is(li, .grid > a) { animation: none; }
+  /* Cierre. */
+  [data-cerrando] [data-menu-fondo] { animation: m-salir 0.18s ease forwards; }
+  [data-cerrando] [data-panel]:not([hidden]) { animation: m-panel-sale 0.18s ease forwards; }
+  [data-cerrando] [data-panel]:not([hidden]) :is(li, .grid > a) { animation: none; }
+
+  /* Links de texto del panel: subrayado fino que aparece. */
+  [data-panel] li a {
+    background: linear-gradient(currentColor, currentColor) left bottom / 0 1px no-repeat;
+    transition: background-size 0.4s var(--ease-suave);
+  }
+  [data-panel] li a:hover { background-size: 100% 1px; }
+
+  /* ── Menú del celular ── */
+  /* Al abrir: las filas suben una tras otra mientras el menú termina de deslizarse. */
+  #menu-t:checked ~ [data-menu-movil]:not([data-dir]) [data-pantalla='principal'] > nav li {
+    animation: m-subir 0.55s var(--ease-suave) backwards;
+    animation-delay: calc(140ms + var(--i, 0) * 50ms);
+  }
+  #menu-t:checked ~ [data-menu-movil]:not([data-dir]) [data-pantalla='principal'] > :is([data-eid='movil'], ul) {
+    animation: m-subir 0.6s var(--ease-suave) 0.4s backwards;
+  }
+  [data-menu-movil] [data-pantalla='principal'] > nav li:nth-child(2) { --i: 1; }
+  [data-menu-movil] [data-pantalla='principal'] > nav li:nth-child(3) { --i: 2; }
+  [data-menu-movil] [data-pantalla='principal'] > nav li:nth-child(4) { --i: 3; }
+  [data-menu-movil] [data-pantalla='principal'] > nav li:nth-child(5) { --i: 4; }
+  [data-menu-movil] [data-pantalla='principal'] > nav li:nth-child(n + 6) { --i: 5; }
+  /* Entrar a una categoría o volver: la pantalla se desliza un poco y sus filas suben. */
+  [data-menu-movil][data-dir='adelante'] [data-pantalla]:not([hidden]) { animation: m-entra-der 0.45s var(--ease-menu) backwards; }
+  [data-menu-movil][data-dir='atras'] [data-pantalla]:not([hidden]) { animation: m-entra-izq 0.45s var(--ease-menu) backwards; }
+
+  /* ── Fotos: zoom lento al pasar el mouse (tarjetas, categorías y paneles) ── */
+  [data-panel] a img,
+  .group img.object-cover {
+    transition: scale 1.1s var(--ease-suave), opacity 0.3s;
+  }
+  @media (hover: hover) {
+    [data-panel] a:hover img,
+    .group:hover img.object-cover {
+      scale: 1.045;
+    }
+  }
+
+  /* ── Entre páginas: fundido un poco más pausado ── */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.3s;
+  }
+}
+
+/* ── Portada: las secciones aparecen al llegar a la pantalla (CSS puro con la línea de tiempo del scroll; donde no existe, se ven siempre) ── */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes m-revelar {
+      from { opacity: 0; transform: translateY(32px); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes m-foto {
+      from { scale: 1.08; }
+      to { scale: 1; }
+    }
+    body:has(.hero-fondo) main > section:not(.hero-fondo, [data-carrusel]) {
+      animation: m-revelar linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 300px;
+    }
+    /* La foto de «Colección destacada» y «El local» se asienta de a poco mientras se ve. */
+    body:has(.hero-fondo) main > section .foto-vacia > img[data-campo-img] {
+      animation: m-foto linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 55%;
+    }
+  }
+}

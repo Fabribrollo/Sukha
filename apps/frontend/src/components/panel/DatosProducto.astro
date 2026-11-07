@@ -5,7 +5,7 @@
 import { Star } from '@lucide/astro';
 import Ayuda from './Ayuda.astro';
 import Campo from './Campo.astro';
-import { categoriasParaElegir, enCampo } from '../../lib/panel';
+import { enCampo } from '../../lib/panel';
 
 interface Props {
   p?: any;
@@ -19,6 +19,13 @@ const { p, categorias, colecciones, opciones, cuidados, parte } = Astro.props;
 // Opciones de cuidados: lo ya usado en otros productos, más el valor actual de este.
 const conActual = (lista: string[], actual: string | null | undefined) => (actual && !lista.includes(actual) ? [actual, ...lista] : lista);
 const ver = (esta: string) => !parte || parte === esta;
+// Categoría en dos pasos: primero la principal y, si tiene subcategorías, la subcategoría (opcional). El formulario manda una sola
+// categoriaId (la más específica), igual que antes, así que lo guardado sigue funcionando.
+const principales = categorias.filter((c) => !c.padreId);
+const hijasPor = Object.fromEntries(principales.map((c) => [c.id, categorias.filter((h) => h.padreId === c.id).map((h) => ({ id: h.id, nombre: h.nombre }))]));
+const actual = categorias.find((c) => c.id === p?.categoriaId);
+const padreActual = actual ? (actual.padreId ?? actual.id) : principales[0]?.id;
+const hijaActual = actual?.padreId ? actual.id : null;
 ---
 
 {ver('basico') && (
@@ -36,9 +43,13 @@ const ver = (esta: string) => !parte || parte === esta;
 )}
 {ver('organizacion') && (
 	<div class:list={['space-y-4', !parte && 'mt-4']}>
-		<Campo etiqueta="Categoría" nombre="categoriaId" tipo="select" data-combo data-crear="/api/admin/categorias">
-			{categoriasParaElegir(categorias).map((c) => <option value={c.id} selected={c.id === p?.categoriaId}>{c.etiqueta}</option>)}
-		</Campo>
+		<div data-categoria data-hijas={JSON.stringify(hijasPor)} data-hija-actual={hijaActual ?? ''} class="grid gap-4 sm:grid-cols-2">
+			<input type="hidden" name="categoriaId" value={hijaActual ?? padreActual ?? ''} />
+			<Campo etiqueta="Categoría" nombre="categoriaPadre" tipo="select" data-combo data-crear="/api/admin/categorias">
+				{principales.map((c) => <option value={c.id} selected={c.id === padreActual}>{c.nombre}</option>)}
+			</Campo>
+			<Campo etiqueta="Subcategoría (opcional)" nombre="categoriaHija" tipo="select"></Campo>
+		</div>
 		<fieldset class="space-y-2">
 			<legend class="etiqueta">Colecciones y portada</legend>
 			<label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 select-none">

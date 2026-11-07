@@ -81,14 +81,12 @@ test('portada: las secciones se ordenan con el teclado y el foco no se pierde', 
   const habiaBorrador = await pagina.locator('[data-descartar]').isVisible();
   const antes = await orden();
   assert.ok(antes.length >= 2, 'la portada de prueba tiene al menos dos secciones');
-  const baja = pagina.locator('[data-secciones] [data-id]').first().locator('[data-bajar]');
-  await baja.focus();
-  await pagina.keyboard.press('Enter');
-  const despues = await orden();
-  assert.equal(despues[1], antes[0], 'la primera sección bajó un lugar');
-  // El foco sigue en una flecha de la misma sección (si ya no puede bajar, en la de subir): se puede seguir sin buscar el botón.
-  const foco = await pagina.evaluate(() => ({ id: document.activeElement?.closest('[data-id]')?.dataset.id, flecha: ['data-subir', 'data-bajar'].some((a) => document.activeElement?.hasAttribute(a)) }));
-  assert.deepEqual(foco, { id: antes[0], flecha: true });
+  // Solo se ordena con el asa (arrastrando o con el teclado sobre ella); no hay botones de flecha.
+  assert.equal(await pagina.locator('[data-secciones] [data-subir], [data-secciones] [data-bajar]').count(), 0, 'sin botones subir/bajar');
+  await pagina.locator('[data-secciones] [data-id]').first().locator('[data-asa]').focus();
+  await pagina.keyboard.press('ArrowDown');
+  assert.equal((await orden())[1], antes[0], 'la primera sección bajó un lugar');
+  await pagina.waitForTimeout(1200);
   // Con las flechas del asa también: se deja la sección donde estaba.
   await pagina.locator('[data-secciones] [data-id]').nth(1).locator('[data-asa]').focus();
   await pagina.keyboard.press('ArrowUp');

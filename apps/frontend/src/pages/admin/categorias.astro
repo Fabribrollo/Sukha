@@ -1,10 +1,13 @@
 ---
+import CatalogoNav from "../../components/panel/CatalogoNav.astro";
 import { ChevronLeft, FolderTree, ImagePlus, Plus, Save, Trash2, X } from '@lucide/astro';
+import SeoCampos from '../../components/panel/SeoCampos.astro';
 import Campo from '../../components/panel/Campo.astro';
 import FilaCategoria from '../../components/panel/FilaCategoria.astro';
 import Interruptor from '../../components/panel/Interruptor.astro';
 import Tarjeta from '../../components/panel/Tarjeta.astro';
 import Vacio from '../../components/panel/Vacio.astro';
+import VistaBoton from '../../components/panel/VistaBoton.astro';
 import Panel from '../../layouts/Panel.astro';
 import { api, leer } from '../../lib/api';
 import { entero, errorDe, marcado, txt } from '../../lib/panel';
@@ -19,7 +22,7 @@ if (Astro.request.method === 'POST') {
   // La guía de talles se guarda como texto libre; la tienda la muestra en la ficha de los productos de esa categoría.
   // Si el campo "padreId" no viene (lo desactiva el formulario cuando la categoría ya tiene subcategorías), no se toca.
   const padreForm = f.has('padreId') ? { padreId: entero(f, 'padreId') ?? null } : {};
-  const datos = { nombre: txt(f, 'nombre'), guiaTalles: txt(f, 'guiaTalles'), ...padreForm, ...(id ? { activa: marcado(f, 'activa') } : {}) };
+  const datos = { nombre: txt(f, 'nombre'), guiaTalles: txt(f, 'guiaTalles'), ...padreForm, ...(id ? { activa: marcado(f, 'activa'), slug: txt(f, 'slug'), seoTitulo: txt(f, 'seoTitulo'), seoDescripcion: txt(f, 'seoDescripcion') } : {}) };
   const r = id ? await api(Astro.request, `/api/admin/categorias/${id}`, datos, 'PATCH') : await api(Astro.request, '/api/admin/categorias', datos);
   if (r.ok) return Astro.redirect(`${Astro.url.pathname}${Astro.url.search}${Astro.url.search ? '&' : '?'}ok`, 303);
   altaFallida = !id;
@@ -35,11 +38,13 @@ const lista = padre ? subcategorias(padre.id) : principales;
 ---
 
 <Panel titulo="Categorías" error={error}>
-	<div class="max-w-6xl">
+	<CatalogoNav actual="categorias" detalle="Organizá tus prendas por tipo." />
+	<div class="max-w-6xl" data-vista="categorias">
 		<Tarjeta titulo={padre ? padre.nombre : 'Categorías'} alRas>
 			<FolderTree slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
 			<p slot="acciones" data-estado-categorias role="status" class="text-theme-xs text-gray-500"></p>
-			<button slot="acciones" type="button" data-alta="alta-categoria" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />{padre ? 'Nueva subcategoría' : 'Nueva'}</button>
+			<VistaBoton slot="acciones" />
+			<button slot="acciones" type="button" data-alta="alta-categoria" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />{padre ? 'Nueva subcategoría' : 'Nueva categoría'}</button>
 			{padre && (
 				<nav aria-label="Ubicación" class="text-theme-sm flex items-center gap-1.5 border-b border-gray-100 px-5 py-3 text-gray-500 sm:px-6">
 					<a href="/admin/categorias" class="inline-flex items-center gap-1 hover:text-gray-800"><ChevronLeft class="size-4" aria-hidden="true" />Categorías</a>
@@ -47,9 +52,10 @@ const lista = padre ? subcategorias(padre.id) : principales;
 				</nav>
 			)}
 			{lista.length === 0 && <Vacio texto={padre ? 'Esta categoría todavía no tiene subcategorías.' : 'Ropa, accesorios…'}><FolderTree aria-hidden="true" /></Vacio>}
-			<ul class="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
+			<div class="px-5 pt-4"><label class="sr-only" for="buscar-catalogo">Buscar categorías</label><input id="buscar-catalogo" type="search" class="campo" placeholder="Buscar categorías…" data-buscar-catalogo /><p data-sin-resultados hidden class="py-3 text-sm text-gray-500">No hay coincidencias.</p></div>
+			<ul class="lista-categorias divide-y divide-gray-100 mt-4">
 				{lista.map((c) => (
-					<li data-id={c.id} data-oculta={String(c.activa !== 1)} class="group/item overflow-hidden rounded-xl border border-gray-200 bg-white">
+					<li data-id={c.id} data-oculta={String(c.activa !== 1)} class="group/item bg-white">
 						<FilaCategoria categoria={c} tieneHijas={subcategorias(c.id).length > 0} hijas={padre ? undefined : subcategorias(c.id).length} />
 					</li>
 				))}
@@ -65,7 +71,7 @@ const lista = padre ? subcategorias(padre.id) : principales;
 			</div>
 			<input type="hidden" name="accion" value="categoria" />
 			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" />
-			<Campo etiqueta="Dentro de" nombre="padreId" tipo="select">
+			<Campo etiqueta="Categoría padre" nombre="padreId" tipo="select">
 				<option value="">Ninguna (principal)</option>
 				{principales.map((p) => <option value={p.id} selected={p.id === padre?.id}>{p.nombre}</option>)}
 			</Campo>
@@ -73,18 +79,19 @@ const lista = padre ? subcategorias(padre.id) : principales;
 		</form>
 	</dialog>
 
-	<dialog id="editar-categoria" class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="editar-categoria-titulo">
-		<form method="post" class="space-y-4 p-5 sm:p-6">
+	<dialog id="editar-categoria" class="m-auto max-h-[90dvh] overflow-y-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="editar-categoria-titulo">
+		<form id="form-editar-categoria" method="post" class="space-y-4 p-5 sm:p-6">
 			<div class="flex items-center justify-between gap-3">
 				<h2 id="editar-categoria-titulo" class="text-base font-medium text-gray-800">Editar categoría</h2>
 				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
 			</div>
 			<input type="hidden" name="accion" value="categoria" /><input type="hidden" name="id" />
 			<Campo etiqueta="Nombre" nombre="nombre" required maxlength="60" />
-			<Campo etiqueta="Dentro de" nombre="padreId" tipo="select" ayuda="Para convertirla en subcategoría, elegí la categoría principal. Solo hay un nivel de subcategorías.">
+			<details data-cambiar-padre class="rounded-xl border border-gray-200 p-3"><summary class="cursor-pointer text-sm font-medium text-gray-700">Cambiar categoría padre</summary><div class="mt-3"><Campo etiqueta="Nueva categoría padre" nombre="padreId" tipo="select" ayuda="Para convertirla en subcategoría, elegí la categoría principal. Solo hay un nivel de subcategorías.">
 				<option value="">Ninguna (categoría principal)</option>
 				{principales.map((p) => <option value={p.id}>{p.nombre}</option>)}
 			</Campo>
+			</div></details>
 			<p data-aviso-hijas class="text-theme-xs hidden text-gray-500">Tiene subcategorías, así que se mantiene como categoría principal.</p>
 			<div class="space-y-2">
 				<p class="etiqueta">Foto (opcional)</p>
@@ -104,8 +111,9 @@ const lista = padre ? subcategorias(padre.id) : principales;
 				<p class="text-theme-xs text-gray-500" data-foto-estado role="status">Se usa en la portada y en las tarjetas del menú de la cabecera.</p>
 			</div>
 			<Campo etiqueta="Guía de talles" nombre="guiaTalles" tipo="area" placeholder="S: busto 88 cm, cintura 68 cm…" ayuda="Se muestra en la ficha de los productos de esta categoría. Las subcategorías sin guía usan la de su categoría principal." />
+			<button type="button" data-abrir-buscadores class="btn btn-secundario w-full justify-between">Buscadores y redes<span aria-hidden="true">→</span></button>
 			<div class="flex items-center justify-between gap-3">
-				<Interruptor etiqueta="Visible" nombre="activa" />
+				<Interruptor etiqueta="Visible en la tienda" nombre="activa" />
 				<button class="btn btn-primario"><Save class="size-4" aria-hidden="true" />Guardar</button>
 			</div>
 			{/* Borrar pide un segundo toque; solo se puede si la categoría quedó vacía. */}
@@ -116,6 +124,32 @@ const lista = padre ? subcategorias(padre.id) : principales;
 			</div>
 		</form>
 	</dialog>
+<dialog id="buscadores-categoria" class="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-3xl overflow-y-auto rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="buscadores-categoria-titulo">
+  <div class="space-y-5 p-5 sm:p-6">
+    <header class="flex flex-wrap items-center gap-3">
+      <button type="button" data-volver-categoria class="btn btn-secundario"><ChevronLeft class="size-4" aria-hidden="true" />Volver</button>
+      <h2 id="buscadores-categoria-titulo" class="text-base font-semibold text-gray-800">Buscadores y redes</h2>
+    </header>
+    <SeoCampos ruta="categoria" slug="" titulo={null} descripcion={null} tituloAuto="" descripcionAuto="" />
+    <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+      <p class="text-xs text-gray-500">Se guarda al guardar la categoría.</p>
+      <button type="button" data-volver-categoria class="btn btn-primario">Listo</button>
+    </footer>
+  </div>
+</dialog>
 </Panel>
 <script src="../../scripts/categorias.ts"></script>
 <script src="../../scripts/alta.ts"></script>
+<script src="../../scripts/vista.ts"></script>
+
+<script>
+const buscar = document.querySelector<HTMLInputElement>('[data-buscar-catalogo]');
+const filas = [...document.querySelectorAll<HTMLElement>('li[data-id]')];
+const normal = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+buscar?.addEventListener('input', () => {
+ const q = normal(buscar.value.trim());
+ filas.forEach((fila) => { fila.hidden = !normal(fila.querySelector('h3')?.textContent ?? '').includes(q); });
+ const vacio = document.querySelector<HTMLElement>('[data-sin-resultados]');
+ if (vacio) vacio.hidden = filas.some((f) => !f.hidden);
+});
+</script>

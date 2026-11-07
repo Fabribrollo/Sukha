@@ -1,11 +1,11 @@
 ---
 // Tarjeta de una categoría: foto, nombre, info, interruptor de visibilidad y botones (editar, ver subcategorías).
 // Los eventos los maneja `scripts/categorias.ts`; el <li> que la contiene lleva `data-id` y `data-oculta`.
-import { ChevronRight, ImageOff, Pencil, Search } from '@lucide/astro';
+import { ChevronRight, ImageOff, Pencil } from '@lucide/astro';
 import Insignia from './Insignia.astro';
 
 interface Props {
-  categoria: { id: number; nombre: string; padreId: number | null; guiaTalles: string | null; activa: number; claveImagen?: string | null; productos?: number };
+  categoria: { id: number; nombre: string; padreId: number | null; guiaTalles: string | null; activa: number; claveImagen?: string | null; slug?: string; seoTitulo?: string | null; seoDescripcion?: string | null; productos?: number };
   tieneHijas?: boolean;
   // Cantidad de subcategorías, solo en las principales (en las subcategorías no se muestra el botón de ver subcategorías).
   hijas?: number;
@@ -17,37 +17,30 @@ if (c.guiaTalles) {
 	const valor = JSON.parse(c.guiaTalles);
 	guia = typeof valor === 'string' ? valor : JSON.stringify(valor, null, 2);
 }
-const datos = JSON.stringify({ id: c.id, nombre: c.nombre, padreId: c.padreId, guia, activa: c.activa === 1, tieneHijas, imagen: c.claveImagen ?? null });
+const datos = JSON.stringify({ slug: c.slug, seoTitulo: c.seoTitulo, seoDescripcion: c.seoDescripcion, id: c.id, nombre: c.nombre, padreId: c.padreId, guia, activa: c.activa === 1, tieneHijas, imagen: c.claveImagen ?? null });
 const productos = c.productos ?? 0;
 ---
 
-<div class="flex h-full flex-col">
-	<div class="relative aspect-[4/3] overflow-hidden bg-gray-100">
-		{c.claveImagen ? (
-			<img src={`/api/imagenes/${c.claveImagen}/mediano.webp`} alt="" loading="lazy" class="size-full object-cover group-data-[oculta=true]/item:opacity-50" />
-		) : (
-			<div class="flex size-full flex-col items-center justify-center gap-1 text-gray-400"><ImageOff class="size-6" aria-hidden="true" /><span class="text-theme-xs">Sin foto</span></div>
-		)}
-		<span class="absolute top-2 left-2 hidden group-data-[oculta=true]/item:inline-flex"><Insignia>Oculta</Insignia></span>
-	</div>
-	<div class="flex flex-1 flex-col gap-3 p-4">
-		<div class="flex items-start justify-between gap-2">
-			<div class="min-w-0">
-				<h3 class="truncate text-sm font-medium text-gray-800 group-data-[oculta=true]/item:text-gray-400">{c.nombre}</h3>
-				<p class="text-theme-xs mt-0.5 text-gray-500">
-					{productos} {productos === 1 ? 'producto' : 'productos'}{hijas !== undefined && ` · ${hijas === 0 ? 'sin subcategorías' : `${hijas} ${hijas === 1 ? 'subcategoría' : 'subcategorías'}`}`}
-				</p>
-			</div>
-			<label class="flex shrink-0 cursor-pointer items-center select-none" title="Visible en la tienda">
-				<input type="checkbox" data-activa checked={c.activa === 1} class="peer sr-only" />
-				<span class="sr-only">{`${c.nombre} visible en la tienda`}</span>
-				<span class="peer-checked:bg-brand-500 peer-focus-visible:ring-brand-500/30 relative h-6 w-11 shrink-0 rounded-full bg-gray-200 transition peer-focus-visible:ring-3 after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:shadow-theme-sm after:transition-transform peer-checked:after:translate-x-5" aria-hidden="true"></span>
-			</label>
-		</div>
-		<div class="mt-auto flex items-center gap-2">
-			<button type="button" data-editar={datos} class="btn btn-secundario" aria-label={`Editar ${c.nombre}`}><Pencil class="size-4" aria-hidden="true" />Editar</button>
-			{hijas !== undefined && <a href={`?padre=${c.id}`} class="btn btn-secundario" data-subcategorias>Subcategorías<ChevronRight class="size-4" aria-hidden="true" /></a>}
-			<a href={`/admin/buscadores/categoria/${c.id}`} class="btn-icono ml-auto" title="Buscadores y redes" aria-label={`Buscadores y redes de ${c.nombre}`}><Search class="size-5" aria-hidden="true" /></a>
-		</div>
-	</div>
-</div>
+<article class="categoria-fila">
+  <div data-imagen-categoria class="categoria-miniatura">
+    {c.claveImagen ? <img src={`/api/imagenes/${c.claveImagen}/mediano.webp`} alt="" loading="lazy" class="size-full object-cover" /> : <span data-sin-foto class="flex size-full items-center justify-center"><ImageOff class="size-5" aria-hidden="true" /></span>}
+  </div>
+  <div class="min-w-0 flex-1">
+    <h3 class="text-sm font-semibold text-gray-800">{c.nombre}</h3>
+    <p class="mt-1 text-xs text-gray-500">{productos} {productos === 1 ? 'producto' : 'productos'}{hijas ? ` · ${hijas} subcategorías` : ''}</p>
+  </div>
+  {c.activa !== 1 && <Insignia>Oculta</Insignia>}
+  {hijas !== undefined && <a class="categoria-enlace" href={`?padre=${c.id}`} aria-label={`Ver subcategorías de ${c.nombre}`} data-subcategorias><span class="sr-only">Ver subcategorías</span></a>}
+  <div class="categoria-acciones">
+    <button type="button" data-editar={datos} class="btn btn-secundario" aria-label={`Editar ${c.nombre}`}><Pencil class="size-4" aria-hidden="true" />Editar</button>
+    {hijas !== undefined && <ChevronRight class="size-4 text-gray-400" aria-hidden="true" />}
+  </div>
+</article>
+<style>
+.categoria-fila {position:relative;display:flex;align-items:center;gap:16px;padding:18px 20px;}
+.categoria-miniatura {width:56px;height:64px;flex-shrink:0;overflow:hidden;border-radius:8px;background:#f2f4f7;color:#98a2b3;}
+.categoria-visible {display:flex;align-items:center;gap:8px;font-size:13px;color:#475467;cursor:pointer;}
+.categoria-enlace{position:absolute;inset:0;border-radius:8px}.categoria-enlace:hover{background:rgb(70 95 255 / 3%)}.categoria-enlace:focus-visible{outline:2px solid #465fff;outline-offset:-3px}.categoria-acciones button{position:relative;z-index:1}
+.categoria-acciones {display:flex;align-items:center;gap:8px;}
+@media(max-width:640px){.categoria-fila{flex-wrap:wrap;padding:16px;gap:12px}.categoria-acciones{width:100%;padding-top:12px;border-top:1px solid #f2f4f7}.categoria-acciones .btn{flex:1;padding-inline:10px}.categoria-miniatura{width:44px;height:52px}.categoria-visible{font-size:12px}}
+</style>

@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';
+import {abrirNavegador,paginaNueva,ingresarAlPanel,BASE} from './comun.mjs';
+const b=await abrirNavegador();try{const p=await paginaNueva(b);await ingresarAlPanel(p);await p.goto(BASE+'/admin/portada');await p.locator('[data-publicar]').click();const d=p.getByRole('dialog',{name:'Confirmar acción'});await d.waitFor();assert.match(await d.textContent(),/Publicar esta portada/);await d.getByRole('button',{name:'Cancelar'}).click();await d.waitFor({state:'detached'});console.log('OK staging: publicar abre modal y cancelar no publica');}finally{await b.close()}

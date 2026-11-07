@@ -1,4 +1,4 @@
-import { and, desc, eq, getTableColumns, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { type Db, TAMANOS_FOTO } from '../config';
 import { categoria, coleccion, color, imagen, marca, material, producto, productoColeccion, productoMaterial, talle, variante } from '../db/schema';
@@ -159,7 +159,7 @@ export function editarColeccion(db: Db, id: number, d: z.infer<typeof EdicionCol
 
 // ───────────── Productos ─────────────
 
-export function listarProductos(db: Db, filtro: { estado?: string; q?: string; marcaId?: number }) {
+export function listarProductos(db: Db, filtro: { estado?: string; q?: string; marcaId?: number; categoriaId?: number }) {
   return db
     .select({
       id: producto.id,
@@ -181,6 +181,8 @@ export function listarProductos(db: Db, filtro: { estado?: string; q?: string; m
       and(
         filtro.estado ? eq(producto.estado, filtro.estado) : undefined,
         filtro.marcaId ? eq(producto.marcaId, filtro.marcaId) : undefined,
+        // Una categoría principal incluye los productos de sus subcategorías.
+        filtro.categoriaId ? or(eq(producto.categoriaId, filtro.categoriaId), eq(categoria.padreId, filtro.categoriaId)) : undefined,
         filtro.q ? like(producto.nombre, `%${filtro.q}%`) : undefined,
       ),
     )
@@ -422,6 +424,24 @@ export async function moverStock(d1: D1Database, adminId: number, varianteId: nu
   return fila;
 }
 
+// Borrar una variante: si ya se vendió (la referencia un pedido, o un movimiento de stock de un pedido) borrarla rompería el
+// historial de ventas, así que solo se pausa (deja de venderse, queda como «Pausada»). Sin ventas se borra de verdad,
+// con su libro de movimientos internos (cargas y ajustes).
+export async function borrarVariante(d1: D1Database, id: number): Promise<"borrada" | "pausada"> {
+  const existe = await d1.prepare('SELECT id FROM variante WHERE id = ?').bind(id).first();
+  if (!existe) throw noEncontrado('la variante');
+  const uso = await d1
+    .prepare('SELECT (SELECT count(*) FROM pedido_item WHERE variante_id = ?) + (SELECT count(*) FROM movimiento_stock WHERE variante_id = ? AND pedido_id IS NOT NULL) AS n')
+    .bind(id, id)
+    .first<{ n: number }>();
+  if (uso && uso.n > 0) {
+    await d1.prepare("UPDATE variante SET activa = 0, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").bind(id).run();
+    return "pausada";
+  }
+  await d1.batch([d1.prepare('DELETE FROM movimiento_stock WHERE variante_id = ?').bind(id), d1.prepare('DELETE FROM variante WHERE id = ?').bind(id)]);
+  return 'borrada';
+}
+
 export function movimientosDeVariante(d1: D1Database, varianteId: number) {
   return d1
     .prepare('SELECT * FROM movimiento_stock WHERE variante_id = ? ORDER BY id DESC LIMIT 100')
@@ -438,7 +458,7 @@ export async function eliminarProducto(d1: D1Database, kv: KVNamespace, id: numb
   const [existe, ventas, fotos] = await d1.batch([
     d1.prepare('SELECT id FROM producto WHERE id = ?').bind(id),
     d1.prepare('SELECT count(*) AS n FROM pedido_item WHERE variante_id IN (SELECT id FROM variante WHERE producto_id = ?)').bind(id),
-    d1.prepare('SELECT clave FROM imagen WHERE producto_id = ?').bind(id),
+    d1.prepare('SELECT clave, original FROM imagen WHERE producto_id = ?').bind(id),
   ]);
   if (!existe.results.length) throw noEncontrado('el producto');
 
@@ -454,7 +474,7 @@ export async function eliminarProducto(d1: D1Database, kv: KVNamespace, id: numb
     d1.prepare('DELETE FROM producto WHERE id = ?').bind(id),
   ]);
   // Los archivos de las fotos se borran después: si esto fallara quedarían huérfanos, pero el producto ya no existe.
-  const claves = (fotos.results as { clave: string }[]).flatMap((f) => TAMANOS_FOTO.map((t) => `${f.clave}/${t}.webp`));
+  const claves = (fotos.results as { clave: string; original: string | null }[]).flatMap((f) => [...TAMANOS_FOTO.map((t) => `${f.clave}/${t}.webp`), ...(f.original ? [f.original] : [])]);
   await Promise.all(claves.map((clave) => kv.delete(clave)));
   return 'borrado';
 }

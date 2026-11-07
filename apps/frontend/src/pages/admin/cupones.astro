@@ -1,4 +1,5 @@
 ---
+import DescuentosNav from '../../components/panel/DescuentosNav.astro';
 import { BadgeDollarSign, CalendarClock, Pause, Pencil, Percent, Plus, Save, TicketPercent, Truck, Users, X } from '@lucide/astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
@@ -29,7 +30,7 @@ if (Astro.request.method === 'POST') {
     const r = id
       ? await api(Astro.request, `/api/admin/cupones/${id}`, { ...comunes, activo: marcado(f, 'activo') }, 'PATCH')
       : await api(Astro.request, '/api/admin/cupones', { ...comunes, codigo: txt(f, 'codigo'), tipo, valor });
-    if (r.ok) return Astro.redirect(`${Astro.url.pathname}?ok`, 303);
+    if (r.ok) return Astro.redirect('/admin/promociones?tipo=cupones&ok', 303);
     altaFallida = !id;
     error = await errorDe(r);
   }
@@ -41,8 +42,9 @@ const vencido = (c: any) => c.venceEn && c.venceEn < new Date().toISOString();
 const agotado = (c: any) => c.usosMaximos !== null && c.usos >= c.usosMaximos;
 ---
 
-<Panel titulo="Cupones" error={error}>
-	<button slot="acciones" type="button" data-alta="alta-cupon" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</button>
+<Panel titulo="Promociones y cupones" error={error}>
+ <DescuentosNav cupones={true} />
+	<button slot="acciones" type="button" data-alta="alta-cupon" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo cupón</button>
 
 	{cupones.length === 0 && <Tarjeta alRas><Vacio texto="Todavía no hay cupones"><TicketPercent aria-hidden="true" /></Vacio></Tarjeta>}
 

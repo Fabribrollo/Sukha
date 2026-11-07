@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import {abrirNavegador,paginaNueva,ingresarAlPanel,BASE} from './comun.mjs';
+const b=await abrirNavegador();try{const p=await paginaNueva(b);await ingresarAlPanel(p);
+for(const width of [1280,390]){await p.goto("about:blank");await p.setViewportSize({width,height:900});await p.goto(BASE+'/admin/categorias');const fila=p.locator('li[data-id]').first();assert.equal(await fila.locator('input[data-activa]').count(),0);assert.equal(await fila.locator('a[href*="buscadores"]').count(),0);await fila.locator('[data-editar]').click();const d=p.locator('#editar-categoria');await d.waitFor();assert.equal(await d.locator('[name=padreId]').isDisabled(),true);assert.ok(await d.locator('[name=slug]').inputValue());await d.getByText('Buscadores y redes',{exact:true}).click();await d.locator('[name=seoTitulo]').fill('Vista de prueba');assert.match(await d.locator('[data-vista-titulo]').first().textContent(),/Vista de prueba/);assert.equal(await d.locator('[name=activa]').count(),1);assert.equal(await d.evaluate(el=>el.scrollWidth>el.clientWidth),false);await d.locator('[data-cerrar]').click();await fila.locator('[data-subcategorias]').click({position:{x:10,y:10}});await p.waitForURL(/padre=/);console.log('OK categorías '+width)}
+await p.goto(BASE+'/categoria/vestidos');const migas=p.getByRole('navigation',{name:'Migas de pan'});assert.doesNotMatch(await migas.textContent(),/Inicio/);assert.match(await migas.textContent(),/Vestidos/i);console.log('OK migas sin Inicio');assert.deepEqual(p.errores,[]);
+}finally{await b.close()}
+

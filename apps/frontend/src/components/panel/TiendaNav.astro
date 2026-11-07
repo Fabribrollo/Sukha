@@ -1,0 +1,13 @@
+---
+import { LayoutPanelTop, PanelTop } from '@lucide/astro';
+const { actual } = Astro.props;
+const enlaces = [['portada', 'Portada', LayoutPanelTop], ['cabecera', 'Cabecera', PanelTop]] as const;
+---
+<div class="tienda-editores">
+  <nav aria-label="Editores de la tienda">
+    {enlaces.map(([ruta, nombre, Icono]) => <a href={`/admin/${ruta}`} aria-current={actual === ruta ? 'page' : undefined}><Icono class="size-4" aria-hidden="true" />{nombre}</a>)}
+  </nav>
+</div>
+<style>
+.tienda-editores{margin-bottom:0}.tienda-editores nav{display:flex;gap:24px;border-bottom:1px solid #e4e7ec}.tienda-editores a{display:flex;align-items:center;gap:8px;padding:0 0 14px;color:#667085;font-size:14px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}.tienda-editores a[aria-current]{color:#3641f5;border-color:#465fff}.tienda-editores a:focus-visible{outline:2px solid #465fff;outline-offset:4px}@media(max-width:480px){.tienda-editores nav{gap:0;justify-content:space-between}.tienda-editores a{font-size:13px;gap:5px}}
+</style>

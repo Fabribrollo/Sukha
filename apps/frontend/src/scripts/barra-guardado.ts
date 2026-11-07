@@ -1,3 +1,4 @@
+import { confirmar } from './dialogo-panel';
 // Barra de guardado (components/panel/BarraGuardado.astro). Los <form data-pendiente="Nombre"> de la página no se guardan
 // solos: al cambiar algo aparece la barra, y «Guardar» (o el botón propio del formulario) manda los cambiados uno por uno a
 // la misma página, pidiendo JSON. Si uno falla, dice cuál y deja lo escrito como está. «Descartar» vuelve a cargar la página.
@@ -65,15 +66,16 @@ barra.querySelector('[data-descartar]')!.addEventListener('click', () => {
 
 document.addEventListener(
   'submit',
-  (e) => {
+  async (e) => {
     const form = e.target as HTMLFormElement;
     if (formularios.includes(form)) {
       e.preventDefault();
       guardar(form, (e as SubmitEvent).submitter);
     } else if (!barra.hidden && !saliendo && !form.dataset.subida) {
       // Las fotos se suben sin salir de la página (scripts/fotos.ts); cualquier otro formulario recarga y perdería lo escrito.
-      if (confirm(PREGUNTA)) saliendo = true;
-      else e.preventDefault();
+      e.preventDefault();
+      const boton = (e as SubmitEvent).submitter;
+      if (await confirmar(PREGUNTA)) { saliendo = true; form.requestSubmit(boton as HTMLButtonElement | null); }
     }
   },
   true,
@@ -81,12 +83,12 @@ document.addEventListener(
 
 document.addEventListener(
   'click',
-  (e) => {
+  async (e) => {
     const a = (e.target as Element).closest?.('a[href]') as HTMLAnchorElement | null;
     if (!a || barra.hidden || saliendo || a.target || a.hasAttribute('download') || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (a.pathname === location.pathname && a.search === location.search && a.hash) return;
-    if (confirm(PREGUNTA)) saliendo = true;
-    else e.preventDefault();
+    e.preventDefault();
+    if (await confirmar(PREGUNTA)) { saliendo = true; location.assign(a.href); }
   },
   true,
 );

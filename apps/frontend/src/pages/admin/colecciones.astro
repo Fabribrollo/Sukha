@@ -1,4 +1,5 @@
 ---
+import CatalogoNav from "../../components/panel/CatalogoNav.astro";
 import { Check, ChevronDown, ImageOff, PackagePlus, Plus, Save, Search, Sparkles, Trash2, X } from '@lucide/astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
@@ -44,41 +45,43 @@ const [colecciones, productos] = await Promise.all([
   leer<any[]>(Astro.request, '/api/admin/productos'),
 ]);
 const abierta = Number(Astro.url.searchParams.get('abierta')) || null;
-const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'verde', borrador: 'gris', oculto: 'ambar' };
+const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'verde', borrador: 'ambar', oculto: 'gris' };
 ---
 
 <Panel titulo="Colecciones" error={error}>
-	<div class="max-w-4xl">
+	<CatalogoNav actual="colecciones" detalle="Agrupá productos para temporadas y campañas." />
+	<div class="max-w-6xl">
 		<Tarjeta titulo="Colecciones" alRas>
 			<Sparkles slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
-			<button slot="acciones" type="button" data-alta="alta-coleccion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva</button>
+			<button slot="acciones" type="button" data-alta="alta-coleccion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva colección</button>
 			{colecciones.length === 0 && <Vacio texto="Verano, ofertas, nueva temporada…"><Sparkles aria-hidden="true" /></Vacio>}
+			<div class="px-5 pt-4"><label class="sr-only" for="buscar-catalogo">Buscar colecciones</label><input id="buscar-catalogo" type="search" class="campo" placeholder="Buscar colecciones…" data-buscar-catalogo /><p data-sin-resultados hidden class="py-3 text-sm text-gray-500">No hay coincidencias.</p></div>
 			<ul class="divide-y divide-gray-100">
 				{colecciones.map((c) => {
 					const dentro = productos.filter((p) => c.productoIds.includes(p.id));
 					const disponibles = productos.filter((p) => !c.productoIds.includes(p.id));
 					return (
-						<li id={`coleccion-${c.id}`}>
-							<details class="group" open={abierta === c.id}>
+						<li id={`coleccion-${c.id}`} class="coleccion-fila">
+							<details class="group" name="coleccion-activa" open={abierta === c.id}>
 								<summary class="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 hover:bg-gray-50 sm:px-6 [&::-webkit-details-marker]:hidden">
-									<span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{c.nombre}</span>
+									<span class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-400">{dentro[0]?.foto ? <img src={foto(dentro[0].foto)!} alt="" class="size-full object-cover" loading="lazy" /> : <Sparkles class="size-5" aria-hidden="true" />}</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-800">{c.nombre}</span><span class="mt-1 block text-xs text-gray-500">{c.activa === 1 ? 'Visible en la tienda' : 'Oculta de la tienda'}</span></span>
 									{c.activa !== 1 && <Insignia>Oculta</Insignia>}
 									<span class="text-theme-xs text-gray-500">{dentro.length} {dentro.length === 1 ? 'producto' : 'productos'}</span>
 									<ChevronDown class="size-4 shrink-0 text-gray-400 transition group-open:rotate-180" aria-hidden="true" />
 								</summary>
 
 								<div class="space-y-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4 sm:px-6">
-									<form method="post" class="flex items-center gap-3">
+									<form method="post" class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
 										<input type="hidden" name="accion" value="coleccion" /><input type="hidden" name="id" value={c.id} />
-										<input name="nombre" value={c.nombre} required maxlength="60" aria-label="Nombre de la colección" class="campo h-10 flex-1" />
+										<input name="nombre" value={c.nombre} required maxlength="60" aria-label="Nombre de la colección" class="campo h-10 w-full sm:flex-1" />
 										<Interruptor etiqueta="Visible" nombre="activa" marcado={c.activa === 1} />
-										<button class="btn-icono" title="Guardar" aria-label="Guardar colección"><Save class="size-5" aria-hidden="true" /></button>
+										<button class="btn btn-secundario" title="Guardar" aria-label="Guardar colección"><Save class="size-4" aria-hidden="true" />Guardar</button>
 										<a href={`/admin/buscadores/coleccion/${c.id}`} class="btn-icono" title="Buscadores y redes" aria-label={`Buscadores y redes de ${c.nombre}`}><Search class="size-5" aria-hidden="true" /></a>
 									</form>
 
 									<section aria-label={`Productos de ${c.nombre}`}>
 										<h3 class="mb-2 text-sm font-medium text-gray-800">En esta colección ({dentro.length})</h3>
-										{dentro.length === 0 && <p class="text-theme-xs text-gray-500">Todavía no tiene productos. Agregá desde la lista de abajo.</p>}
+										{dentro.length === 0 && <p class="text-theme-xs text-gray-500">Todavía no tiene productos. Usá «Agregar productos».</p>}
 										<ul class="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white empty:hidden">
 											{dentro.map((p) => (
 												<li class="flex items-center gap-3 px-3 py-2">
@@ -102,10 +105,10 @@ const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'v
 									{/* Borrar pide un segundo toque. Las prendas no se borran: solo se deshace la colección. */}
 									<details class="group/borrar flex justify-end">
 										<summary class="btn btn-peligro-suave group-open/borrar:hidden" aria-label={`Borrar la colección ${c.nombre}`}><Trash2 class="size-4" aria-hidden="true" />Borrar colección</summary>
-										<form method="post" class="flex items-center gap-3">
+										<form method="post" class="flex flex-wrap items-center gap-3">
 											<p class="text-theme-xs text-gray-500">Las prendas siguen en la tienda.</p>
 											<input type="hidden" name="accion" value="borrarColeccion" /><input type="hidden" name="id" value={c.id} />
-											<button class="btn btn-peligro"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+											<button type="button" data-cancelar-borrado class="btn btn-secundario">Cancelar</button><button class="btn btn-peligro"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
 										</form>
 									</details>
 								</div>
@@ -202,3 +205,19 @@ const ESTADO_COLOR: Record<string, 'verde' | 'gris' | 'ambar'> = { publicado: 'v
 </Panel>
 <script src="../../scripts/agregar-productos.ts"></script>
 <script src="../../scripts/alta.ts"></script>
+
+<script>
+const buscar = document.querySelector<HTMLInputElement>('[data-buscar-catalogo]');
+const filas = [...document.querySelectorAll<HTMLElement>('li[id^="coleccion-"]')];
+const normal = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+buscar?.addEventListener('input', () => {
+ const q = normal(buscar.value.trim());
+ filas.forEach((fila) => { fila.hidden = !normal(fila.querySelector('summary')?.textContent ?? '').includes(q); });
+ const vacio = document.querySelector<HTMLElement>('[data-sin-resultados]');
+ if (vacio) vacio.hidden = filas.some((f) => !f.hidden);
+});
+</script>
+
+<script>
+document.querySelectorAll('[data-cancelar-borrado]').forEach((boton) => boton.addEventListener('click', () => boton.closest('details')?.removeAttribute('open')));
+</script>

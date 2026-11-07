@@ -1,10 +1,12 @@
 ---
+import CatalogoNav from "../../../components/panel/CatalogoNav.astro";
 import { ImageOff, Pencil, Plus, Download, Rows3, Search, Shirt, Trash2, X } from '@lucide/astro';
 import Cantidad from '../../../components/panel/Cantidad.astro';
 import DatosProducto from '../../../components/panel/DatosProducto.astro';
 import Insignia from '../../../components/panel/Insignia.astro';
 import Tarjeta from '../../../components/panel/Tarjeta.astro';
 import Vacio from '../../../components/panel/Vacio.astro';
+import VistaBoton from '../../../components/panel/VistaBoton.astro';
 import Panel from '../../../layouts/Panel.astro';
 import { api, leer } from '../../../lib/api';
 import { ESTADOS_PRODUCTO, centavos, errorDe, entero, foto, marcado, pesos, txt } from '../../../lib/panel';
@@ -49,7 +51,8 @@ if (Astro.request.method === 'POST') {
 const estado = Astro.url.searchParams.get('estado') ?? '';
 const q = Astro.url.searchParams.get('q') ?? '';
 const marca = Astro.url.searchParams.get('marca') ?? '';
-const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...(marca && { marca }) });
+const categoria = Astro.url.searchParams.get('categoria') ?? '';
+const consulta = new URLSearchParams({ ...(estado && { estado }), ...(q && { q }), ...(marca && { marca }), ...(categoria && { categoria }) });
 const [conteos, productos, categorias, opciones, colecciones, sugeridos] = await Promise.all([
   leer<Record<string, number>>(Astro.request, '/api/admin/productos/conteos'),
   leer<any[]>(Astro.request, `/api/admin/productos?${consulta}`),
@@ -59,24 +62,42 @@ const [conteos, productos, categorias, opciones, colecciones, sugeridos] = await
   leer<{ cuidados: string[] }>(Astro.request, '/api/admin/productos/sugerencias'),
 ]);
 const { marcas } = opciones;
+const principales = categorias.filter((c) => !c.padreId);
+const hijasDe = (id: number) => categorias.filter((c) => c.padreId === id);
+const enlaceEstado = (valor: string) => {
+  const filtros = new URLSearchParams(consulta);
+  if (valor) filtros.set('estado', valor); else filtros.delete('estado');
+  return `/admin/productos?${filtros}`;
+};
 const color: Record<string, any> = { publicado: 'verde', borrador: 'ambar', oculto: 'gris' };
 const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition', activa ? 'bg-white text-gray-900 shadow-theme-xs' : 'text-gray-500 hover:text-gray-700'];
 ---
 
 <Panel titulo="Productos" error={error} aviso={Astro.url.searchParams.has('oculto') ? 'Ese producto ya tuvo ventas, así que no se puede borrar: quedó oculto de la tienda.' : undefined}>
+	<CatalogoNav actual="productos" detalle="Precios, fotos y stock de tus prendas." />
 	<a slot="acciones" href="/api/admin/productos/exportar" download class="btn btn-secundario"><Download class="size-4" aria-hidden="true" />Exportar stock</a>
 	<a slot="acciones" href="/admin/productos/carga-rapida" class="btn btn-secundario"><Rows3 class="size-4" aria-hidden="true" />Carga rápida</a>
-	<button slot="acciones" type="button" data-alta="alta-producto" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo</button>
+	<button slot="acciones" type="button" data-alta="alta-producto" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nuevo producto</button>
 
+	<div data-vista="productos" class="space-y-5">
 	<div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 		<nav class="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1" aria-label="Filtrar por estado">
-			<a href="/admin/productos" aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todos<Cantidad n={Object.values(conteos).reduce((a, b) => a + b, 0)} /></a>
+			<a href={enlaceEstado('')} aria-current={!estado ? 'page' : undefined} class:list={pestana(!estado)}>Todos<Cantidad n={Object.values(conteos).reduce((a, b) => a + b, 0)} /></a>
 			{Object.entries(ESTADOS_PRODUCTO).map(([valor, nombre]) => (
-				<a href={`/admin/productos?estado=${valor}`} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}<Cantidad n={conteos[valor]} /></a>
+				<a href={enlaceEstado(valor)} aria-current={estado === valor ? 'page' : undefined} class:list={pestana(estado === valor)}>{nombre}<Cantidad n={conteos[valor]} /></a>
 			))}
 		</nav>
 		<form method="get" data-filtros class="flex flex-col gap-2 sm:flex-row lg:w-auto" role="search">
 			{estado && <input type="hidden" name="estado" value={estado} />}
+			<select name="categoria" aria-label="Filtrar por categoría" class="campo sm:w-52">
+				<option value="">Todas las categorías</option>
+				{principales.map((p) => (
+					<optgroup label={p.nombre}>
+						<option value={p.id} selected={String(p.id) === categoria}>{hijasDe(p.id).length ? `Todo ${p.nombre}` : p.nombre}</option>
+						{hijasDe(p.id).map((h) => <option value={h.id} selected={String(h.id) === categoria}>{h.nombre}</option>)}
+					</optgroup>
+				))}
+			</select>
 			{marcas.length > 0 && (
 				<select name="marca" aria-label="Filtrar por marca o distribuidor" class="campo sm:w-52">
 					<option value="">Todas las marcas</option>
@@ -88,11 +109,12 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 				<input type="search" name="q" value={q} placeholder="Buscar producto" aria-label="Buscar producto" class="campo pl-10" />
 			</span>
 		</form>
+		<VistaBoton />
 	</div>
 
 	<Tarjeta alRas>
 		{productos.length === 0 ? <Vacio texto="No hay productos con este filtro"><Shirt aria-hidden="true" /></Vacio> : (
-			<div class="overflow-x-auto">
+			<div data-vista-panel="lista" class="overflow-x-auto">
 				<table class="tabla-tarjetas min-w-full">
 					<thead class="border-b border-gray-100"><tr><th class="th">Producto</th><th class="th">Estado</th><th class="th num">Precio</th><th class="th num">Stock</th><th class="th"><span class="sr-only">Acciones</span></th></tr></thead>
 					<tbody class="divide-y divide-gray-100">
@@ -121,7 +143,7 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 											<summary class="btn-icono hover:bg-error-50 hover:text-error-600 group-open:hidden" title="Borrar" aria-label={`Borrar ${p.nombre}`}><Trash2 class="size-5" aria-hidden="true" /></summary>
 											<form method="post">
 												<input type="hidden" name="accion" value="borrar" /><input type="hidden" name="id" value={p.id} />
-												<button class="btn btn-peligro px-3 py-2"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+												<button type="button" data-cancelar-borrado class="btn btn-secundario">Cancelar</button><button class="btn btn-peligro px-3 py-2"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
 											</form>
 										</details>
 									</span>
@@ -131,17 +153,52 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 					</tbody>
 				</table>
 			</div>
+			<ul data-vista-panel="grilla" hidden class="grilla-productos">
+				{productos.map((p) => (
+					<li class="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
+						<a href={`/admin/productos/${p.id}`} class="relative block aspect-[3/4] bg-gray-100" aria-label={`Editar ${p.nombre}`}>
+							{p.foto
+								? <img class="size-full object-cover" src={foto(p.foto)} alt="" loading="lazy" />
+								: <span class="flex size-full items-center justify-center text-gray-400"><ImageOff class="size-8" aria-label="Sin foto" /></span>}
+							<span class="absolute top-2 left-2"><Insignia color={color[p.estado]}>{ESTADOS_PRODUCTO[p.estado]}</Insignia></span>
+						</a>
+						<div class="flex flex-1 flex-col gap-1 p-3">
+							<a href={`/admin/productos/${p.id}`} class="hover:text-brand-500 text-sm font-medium text-gray-800">{p.nombre}</a>
+							<span class="text-theme-xs text-gray-500">{[p.categoria, p.marca].filter(Boolean).join(' · ')}</span>
+							<div class="mt-auto flex items-center justify-between gap-2 pt-2">
+								<span class="text-sm tabular-nums">
+									{p.precioOfertaCentavos
+										? <><span class="font-medium text-gray-800">{pesos(p.precioOfertaCentavos)}</span> <s class="text-theme-xs text-gray-400">{pesos(p.precioCentavos)}</s></>
+										: <span class="font-medium text-gray-800">{pesos(p.precioCentavos)}</span>}
+								</span>
+								{p.stock === 0 ? <Insignia color="rojo">Sin stock</Insignia> : <span class="text-theme-xs text-gray-500">Stock {p.stock}</span>}
+							</div>
+						</div>
+						<div class="flex items-center justify-end gap-1 border-t border-gray-100 px-2 py-1.5">
+							<a href={`/admin/productos/${p.id}`} class="btn-icono" title="Editar" aria-label={`Editar ${p.nombre}`}><Pencil class="size-5" aria-hidden="true" /></a>
+							<details class="group flex items-center">
+								<summary class="btn-icono hover:bg-error-50 hover:text-error-600 group-open:hidden" title="Borrar" aria-label={`Borrar ${p.nombre}`}><Trash2 class="size-5" aria-hidden="true" /></summary>
+								<form method="post">
+									<input type="hidden" name="accion" value="borrar" /><input type="hidden" name="id" value={p.id} />
+									<button type="button" data-cancelar-borrado class="btn btn-secundario">Cancelar</button><button class="btn btn-peligro px-3 py-2"><Trash2 class="size-4" aria-hidden="true" />¿Borrar?</button>
+								</form>
+							</details>
+						</div>
+					</li>
+				))}
+			</ul>
 		)}
 	</Tarjeta>
+	</div>
 
 	<dialog id="alta-producto" data-abrir={altaFallida ? '' : undefined} class="m-auto max-h-[92vh] w-[calc(100%-1.5rem)] max-w-3xl overflow-y-auto rounded-2xl p-0 backdrop:bg-gray-900/50" aria-labelledby="alta-producto-titulo">
 		<form method="post" class="space-y-5 p-5 sm:p-6">
-			<div class="flex items-center justify-between gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
 				<h2 id="alta-producto-titulo" class="text-base font-medium text-gray-800">Nuevo producto</h2>
 				<button type="button" data-cerrar class="btn-icono" title="Cerrar" aria-label="Cerrar"><X class="size-5" aria-hidden="true" /></button>
 			</div>
 			<DatosProducto categorias={categorias} colecciones={colecciones} opciones={opciones} cuidados={sugeridos.cuidados} />
-			<div class="flex items-center justify-between gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
 				<p class="text-theme-xs text-gray-500">Nace como borrador: después cargás talles, colores y fotos.</p>
 				<button class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Crear borrador</button>
 			</div>
@@ -150,10 +207,16 @@ const pestana = (activa: boolean) => ['rounded-lg px-3 py-1.5 text-sm font-mediu
 </Panel>
 
 <script src="../../../scripts/combo.ts"></script>
+<script src="../../../scripts/categoria-dos-pasos.ts"></script>
 <script src="../../../scripts/materiales.ts"></script>
 <script src="../../../scripts/alta.ts"></script>
+<script src="../../../scripts/vista.ts"></script>
 <script>
 	// Cambiar la marca filtra al instante.
 	const filtros = document.querySelector<HTMLFormElement>('[data-filtros]');
 	filtros?.addEventListener('change', (e) => (e.target as HTMLElement).tagName === 'SELECT' && filtros.requestSubmit());
+</script>
+
+<script>
+document.querySelectorAll('[data-cancelar-borrado]').forEach((boton) => boton.addEventListener('click', () => boton.closest('details')?.removeAttribute('open')));
 </script>

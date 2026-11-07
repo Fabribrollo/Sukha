@@ -9,6 +9,7 @@ import Grilla from './Grilla.astro';
 import Migas from './Migas.astro';
 
 interface Props {
+  inicioEnMigas?: boolean;
   titulo: string;
   subtitulo?: string;
   migas: { texto: string; href?: string }[];
@@ -26,7 +27,7 @@ interface Props {
   // Productos para sugerir si no hay resultados.
   sugeridos?: TarjetaDeProducto[];
 }
-const { titulo, subtitulo, migas, datos, p, base, filtros: filtrosTienda, alcance, tienda, mostrarCategorias = false, atajos, sugeridos = [] } = Astro.props;
+const { inicioEnMigas = true, titulo, subtitulo, migas, datos, p, base, filtros: filtrosTienda, alcance, tienda, mostrarCategorias = false, atajos, sugeridos = [] } = Astro.props;
 // Las categorías son las de toda la tienda; talles, colores y precio, los de esta página.
 const filtros: Filtros = { ...filtrosTienda, ...alcance };
 const { productos, total } = datos;
@@ -53,7 +54,7 @@ const tituloSeccion = "flex min-h-11 cursor-pointer items-center justify-between
 ---
 
 <div class="contenedor pt-5 pb-4">
-	<Migas items={migas} />
+	<Migas items={migas} conInicio={inicioEnMigas} />
 	<div class="mt-4 flex flex-wrap items-end justify-between gap-2">
 		<div>
 			<h1 class="text-[40px] leading-none md:text-[64px]">{titulo}</h1>
@@ -279,14 +280,15 @@ const tituloSeccion = "flex min-h-11 cursor-pointer items-center justify-between
 	const mas = document.querySelector<HTMLElement>('[data-mas]');
 	const boton = mas?.querySelector<HTMLAnchorElement>('[data-ver-mas]');
 	if (mas && boton) {
-		const lista = document.querySelector('section[aria-label=Productos] ul')!;
+		// Solo la grilla (hija directa de la sección): las etiquetas de cada tarjeta también son «ul > li» y no deben sumarse como tarjetas.
+		const lista = document.querySelector('section[aria-label=Productos] > ul')!;
 		boton.addEventListener('click', async (e) => {
 			e.preventDefault();
 			boton.setAttribute('aria-busy', 'true');
 			try {
 				const html = await (await fetch(boton.href)).text();
 				const doc = new DOMParser().parseFromString(html, 'text/html');
-				for (const li of doc.querySelectorAll('section[aria-label=Productos] ul > li')) lista.append(document.importNode(li, true));
+				for (const li of doc.querySelectorAll('section[aria-label=Productos] > ul > li')) lista.append(document.importNode(li, true));
 				mas.querySelector('[data-vistas]')!.textContent = String(lista.children.length);
 				const siguiente = doc.querySelector<HTMLAnchorElement>('[data-ver-mas]');
 				if (siguiente) boton.href = siguiente.href;

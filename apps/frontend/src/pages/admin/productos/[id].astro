@@ -1,5 +1,5 @@
 ---
-import { Search, Camera, CircleCheck, CircleDashed, Copy, Eye, EyeOff, History, ImagePlus, Layers, PackagePlus, Pause, Pencil, Play, Plus, SlidersHorizontal, Banknote, FolderTree, Star, Store, Tag, Trash2, GripVertical } from '@lucide/astro';
+import { Search, Camera, CircleCheck, CircleDashed, Copy, Eye, EyeOff, History, ImagePlus, Layers, PackagePlus, Pause, Crop, Play, Plus, SlidersHorizontal, Banknote, FolderTree, Star, Store, Tag, Trash2, GripVertical } from '@lucide/astro';
 import BarraGuardado from '../../../components/panel/BarraGuardado.astro';
 import Campo from '../../../components/panel/Campo.astro';
 import DatosProducto from '../../../components/panel/DatosProducto.astro';
@@ -17,6 +17,7 @@ export const prerender = false;
 const id = Astro.params.id;
 const ruta = `/api/admin/productos/${id}`;
 let error = '';
+let aviso = '';
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
@@ -53,9 +54,18 @@ if (Astro.request.method === 'POST') {
     r = await api(Astro.request, `${ruta}/variantes`, { talleId: entero(f, 'talleId'), colorId: entero(f, 'colorId'), stock: entero(f, 'stock') ?? 0 });
   } else if (accion === 'activa') {
     r = await api(Astro.request, `/api/admin/variantes/${f.get('varianteId')}`, { activa: f.get('valor') === '1' }, 'PATCH');
+  } else if (accion === 'borrarVariante') {
+    r = await api(Astro.request, `/api/admin/variantes/${f.get('varianteId')}`, undefined, 'DELETE');
+    // Con ventas no se borra (rompería el historial): queda pausada, y se avisa.
+    if (r.ok && ((await r.clone().json()) as any).resultado === 'pausada') {
+      aviso = 'Esa variante ya tuvo ventas, así que no se borró para no perder el historial: quedó pausada y deja de venderse.';
+      r = undefined as any;
+    }
   } else if (accion === 'stock') {
-    // El tipo de movimiento viene del botón que se tocó: entra stock, venta en el local o ajuste.
-    r = await api(Astro.request, `/api/admin/variantes/${f.get('varianteId')}/stock`, { tipo: f.get('tipo'), cantidad: entero(f, 'cantidad'), nota: txt(f, 'nota') });
+    // Se edita el número de stock de la fila: se manda la diferencia como «ajuste», así queda en el historial y no pisa ventas hechas mientras tanto.
+    const diferencia = (entero(f, 'stockNuevo') ?? NaN) - (entero(f, 'stockActual') ?? NaN);
+    if (!Number.isFinite(diferencia)) error = 'El stock tiene que ser un número entero, 0 o más.';
+    else if (diferencia !== 0) r = await api(Astro.request, `/api/admin/variantes/${f.get('varianteId')}/stock`, { tipo: 'ajuste', cantidad: diferencia, nota: 'Ajuste desde la ficha del producto' });
   } else if (accion === 'foto') {
     r = await api(Astro.request, `/api/admin/imagenes/${f.get('imagenId')}`, { colorId: entero(f, 'colorId') ?? null }, 'PATCH');
   } else if (accion === 'borrarFoto') {
@@ -103,7 +113,7 @@ const requisitos = [
 ];
 ---
 
-<Panel titulo={p.nombre} error={error} volver={{ href: '/admin/productos', texto: 'Productos' }}>
+<Panel titulo={p.nombre} error={error} aviso={aviso} volver={{ href: '/admin/productos', texto: 'Productos' }}>
 	<Fragment slot="acciones">
 		<Insignia color={colorEstado[p.estado]}>{ESTADOS_PRODUCTO[p.estado]}</Insignia>
 		<form method="post">
@@ -136,7 +146,7 @@ const requisitos = [
 			<Tag slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
 			<DatosProducto parte="basico" p={p} categorias={categorias} colecciones={colecciones} opciones={opciones} cuidados={sugeridos.cuidados} />
 		</Tarjeta>
-		<Tarjeta titulo="Precio y envío" class="order-30 xl:col-start-1">
+		<Tarjeta titulo="Precio y envío" class="order-20 xl:col-start-1">
 			<Banknote slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
 			<DatosProducto parte="precio" p={p} categorias={categorias} colecciones={colecciones} opciones={opciones} cuidados={sugeridos.cuidados} />
 		</Tarjeta>
@@ -153,7 +163,7 @@ const requisitos = [
 			<div class="relative overflow-x-auto">
 				<table class="tabla-tarjetas min-w-full">
 					<thead class="border-b border-gray-100">
-						<tr><th class="th">Variante</th><th class="th num">Stock</th><th class="th">Mover stock</th><th class="th"><span class="sr-only">Acciones</span></th></tr>
+						<tr><th class="th">Variante</th><th class="th num">Stock</th><th class="th"><span class="sr-only">Acciones</span></th></tr>
 					</thead>
 					<tbody class="divide-y divide-gray-100">
 						{p.variantes.map((v: any) => (
@@ -165,20 +175,18 @@ const requisitos = [
 									</span>
 								</td>
 								<td class="td num">
-									{!v.activa ? <Insignia>Pausada</Insignia> : v.stock === 0 ? <Insignia color="rojo">0</Insignia> : <span class="text-base font-semibold text-gray-800">{v.stock}</span>}
-								</td>
-								<td class="td">
-									<form method="post" class="flex items-center gap-1.5">
-										<input type="hidden" name="accion" value="stock" /><input type="hidden" name="varianteId" value={v.id} />
-										<input name="cantidad" inputmode="numeric" required aria-label="Cantidad" placeholder="Cant." class="campo h-9 w-20 px-3" />
-										<button name="tipo" value="carga" class="btn-icono text-success-600 hover:bg-success-50 hover:text-success-700" title="Entra stock" aria-label="Entra stock"><PackagePlus class="size-5" aria-hidden="true" /></button>
-										<button name="tipo" value="venta_local" class="btn-icono text-brand-500 hover:bg-brand-50 hover:text-brand-600" title="Venta en el local (descuenta)" aria-label="Venta en el local (descuenta)"><Store class="size-5" aria-hidden="true" /></button>
-										<button name="tipo" value="ajuste" class="btn-icono" title="Ajuste: sumá con 3 o restá con -3" aria-label="Ajuste: sumá con 3 o restá con -3"><SlidersHorizontal class="size-5" aria-hidden="true" /></button>
+									<form method="post" class="flex items-center justify-end gap-2">
+										<input type="hidden" name="accion" value="stock" /><input type="hidden" name="varianteId" value={v.id} /><input type="hidden" name="stockActual" value={v.stock} />
+										{!v.activa && <Insignia>Pausada</Insignia>}
+										<input name="stockNuevo" type="number" min="0" step="1" inputmode="numeric" value={v.stock} data-stock aria-label={`Stock de ${[v.talle, v.color].filter(Boolean).join(' · ') || 'la variante'}`} class:list={['campo h-9 w-20 px-3 text-right font-semibold', v.stock === 0 && 'border-error-300 text-error-600']} />
 									</form>
 								</td>
 								<td class="td">
 									<span class="flex items-center justify-end gap-1">
-										<a href={`?movimientos=${v.id}#movimientos`} class="btn-icono" title="Historial de stock" aria-label="Historial de stock"><History class="size-5" aria-hidden="true" /></a>
+										<form method="post" data-confirmar-variante={[v.talle, v.color].filter(Boolean).join(' · ') || 'Única'}>
+											<input type="hidden" name="accion" value="borrarVariante" /><input type="hidden" name="varianteId" value={v.id} />
+											<button class="btn-icono hover:bg-error-50 hover:text-error-600" title="Borrar variante" aria-label="Borrar variante"><Trash2 class="size-5" aria-hidden="true" /></button>
+										</form>
 										<form method="post">
 											<input type="hidden" name="accion" value="activa" /><input type="hidden" name="varianteId" value={v.id} /><input type="hidden" name="valor" value={v.activa ? '0' : '1'} />
 											<button class="btn-icono" title={v.activa ? 'Pausar: deja de venderse' : 'Reactivar'} aria-label={v.activa ? 'Pausar: deja de venderse' : 'Reactivar'}>
@@ -201,7 +209,7 @@ const requisitos = [
 			</Campo>
 			<Campo etiqueta="Color" nombre="colorId" tipo="select" class="min-w-28 flex-1" data-combo data-crear="/api/admin/colores">
 				<option value="">Sin color</option>
-				{opciones.colores.map((c) => <option value={c.id}>{c.nombre}</option>)}
+				{opciones.colores.map((c) => <option value={c.id} data-hex={c.hex || undefined}>{c.nombre}</option>)}
 			</Campo>
 			<Campo etiqueta="Stock" nombre="stock" inputmode="numeric" valor="0" class="w-24" />
 			<button class="btn btn-secundario"><Plus class="size-4" aria-hidden="true" />Agregar</button>
@@ -226,7 +234,7 @@ const requisitos = [
 		</Tarjeta>
 	)}
 
-	<Tarjeta titulo="Fotos" class="order-20 xl:col-start-1">
+	<Tarjeta titulo="Fotos" class="order-30 xl:col-start-1">
 		<Camera slot="icono" class="size-5 text-gray-400" aria-hidden="true" />
 		{p.imagenes.length > 1 && <p class="text-theme-xs mb-3 text-gray-500" role="status" data-estado-fotos>Arrastrá las fotos para ordenarlas: la primera es la principal.</p>}
 		<div data-fotos={`/api/admin/productos/${id}/imagenes/orden`} class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -238,23 +246,26 @@ const requisitos = [
 						</button>
 					)}
 					{i === 0 && <span data-principal class="text-theme-xs absolute top-2 right-2 z-[1] rounded-full bg-gray-900/80 px-2 py-0.5 font-medium text-white">Principal</span>}
-					<img src={foto(img.clave, 'mediano')} alt={`${p.nombre}${colorDe(img.colorId) ? ` ${colorDe(img.colorId).nombre}` : ''}`} loading="lazy" class="aspect-[3/4] w-full rounded-xl bg-gray-100 object-cover" />
+					{/* Tocar la foto abre el recorte (scripts/reencuadrar-foto.ts). Es un div y no un botón para que se pueda seguir arrastrando de ahí. */}
+					<div role="button" tabindex="0" data-recortar={img.id} data-clave={img.clave} data-original={img.original ? '1' : '0'} data-encuadre={img.encuadre ?? ''} title="Reencuadrar la foto" aria-label={`Reencuadrar la foto ${i + 1}`} class="group/foto relative block cursor-pointer overflow-hidden rounded-xl">
+						<img src={foto(img.clave, 'mediano')} alt={`${p.nombre}${colorDe(img.colorId) ? ` ${colorDe(img.colorId).nombre}` : ''}`} loading="lazy" class="aspect-[3/4] w-full bg-gray-100 object-cover" />
+						<span class="absolute inset-0 flex items-center justify-center bg-gray-900/45 text-sm font-medium text-white opacity-0 transition group-hover/foto:opacity-100 group-focus-visible/foto:opacity-100"><Crop class="mr-1.5 size-4" aria-hidden="true" />Reencuadrar</span>
+					</div>
 					<figcaption class="mt-1.5 flex items-center justify-between gap-1">
-						<span class="text-theme-xs flex min-w-0 items-center gap-1.5 text-gray-500">
-							{img.colorId && <span class="size-3 shrink-0 rounded-full border border-gray-200" style={`background:${colorDe(img.colorId)?.hex ?? 'transparent'}`} aria-hidden="true"></span>}
-							<span class="truncate">{colorDe(img.colorId)?.nombre ?? 'General'}</span>
-						</span>
-						<span class="flex shrink-0">
-							<details class="relative">
-								<summary class="btn-icono size-8" title="Editar foto" aria-label="Editar foto"><Pencil class="size-4" aria-hidden="true" /></summary>
-								<form method="post" class="shadow-theme-lg absolute right-0 bottom-10 z-10 w-60 space-y-3 rounded-xl border border-gray-200 bg-white p-4" data-pendiente={`Foto ${i + 1}`} autocomplete="off">
+						<details class="relative min-w-0">
+							<summary class="text-theme-xs flex min-w-0 cursor-pointer list-none items-center gap-1.5 text-gray-500 hover:text-gray-800 hover:underline [&::-webkit-details-marker]:hidden" title="Cambiar el color de esta foto">
+								{img.colorId && <span class="size-3 shrink-0 rounded-full border border-gray-200" style={`background:${colorDe(img.colorId)?.hex ?? 'transparent'}`} aria-hidden="true"></span>}
+								<span class="truncate">{colorDe(img.colorId)?.nombre ?? 'General'}</span>
+							</summary>
+							<form method="post" class="shadow-theme-lg absolute left-0 bottom-8 z-10 w-60 space-y-3 rounded-xl border border-gray-200 bg-white p-4" data-pendiente={`Foto ${i + 1}`} autocomplete="off">
 									<input type="hidden" name="accion" value="foto" /><input type="hidden" name="imagenId" value={img.id} />
 									<Campo etiqueta="Color del producto" nombre="colorId" tipo="select">
 										<option value="">General</option>
 										{opcionesFoto(img.colorId).map((v) => <option value={v.id} selected={v.id === img.colorId}>{v.texto}</option>)}
 									</Campo>
 								</form>
-							</details>
+						</details>
+						<span class="flex shrink-0">
 							{/* Borrar pide confirmación, como en la lista de productos: el tacho abre un segundo botón. */}
 							<details class="group flex items-center">
 								<summary class="btn-icono hover:bg-error-50 hover:text-error-600 size-8 group-open:hidden" title="Borrar foto" aria-label={`Borrar la foto ${i + 1}`}><Trash2 class="size-4" aria-hidden="true" /></summary>
@@ -269,7 +280,7 @@ const requisitos = [
 			))}
 		</div>
 
-		<form data-subida={`/api/admin/productos/${id}/imagenes`} data-auto data-aspecto={4 / 3} data-tamanos='{"chico":400,"mediano":900,"grande":1600}' class:list={['space-y-4', p.imagenes.length > 0 && 'mt-6 border-t border-gray-100 pt-6']}>
+		<form data-subida={`/api/admin/productos/${id}/imagenes`} data-auto data-aspecto={3 / 4} data-guardar-original="2000" data-tamanos='{"chico":400,"mediano":900,"grande":1600}' class:list={['space-y-4', p.imagenes.length > 0 && 'mt-6 border-t border-gray-100 pt-6']}>
 			<Campo etiqueta="Color del producto" nombre="colorId" tipo="select" ayuda="Elegilo antes de subir. Son los colores que cargaste en las variantes: la foto se muestra cuando la clienta elige ese color. «General» se ve siempre. La descripción de la foto se arma sola con el nombre del producto y el color.">
 				<option value="">General</option>
 				{variantesParaFoto.map((v) => <option value={v.id}>{v.texto}</option>)}
@@ -297,5 +308,8 @@ const requisitos = [
 
 <script src="../../../scripts/fotos.ts"></script>
 <script src="../../../scripts/ordenar-fotos.ts"></script>
+<script src="../../../scripts/reencuadrar-foto.ts"></script>
 <script src="../../../scripts/combo.ts"></script>
+<script src="../../../scripts/categoria-dos-pasos.ts"></script>
 <script src="../../../scripts/materiales.ts"></script>
+<script src="../../../scripts/stock-variante.ts"></script>

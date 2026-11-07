@@ -223,3 +223,30 @@
 .flatpickr-day.inRange { background: var(--color-brand-50); border-color: var(--color-brand-50); box-shadow: -5px 0 0 var(--color-brand-50), 5px 0 0 var(--color-brand-50); }
 .flatpickr-day.today { border-color: var(--color-brand-300); }
 .flatpickr-day { max-width: none; }
+
+/* Un encabezado numérico se alinea como sus celdas: el utility .th (a la izquierda) pisaba a .num, que vive en la capa base. */
+th.num {
+  text-align: right;
+}
+
+/* ───────────── Cambiar de vista: lista o cuadrícula (scripts/vista.ts) ───────────── */
+.vista-botones { display: inline-flex; gap: 0.25rem; border-radius: 0.75rem; background: var(--color-gray-100); padding: 0.25rem; align-self: flex-start; }
+.vista-botones button { display: inline-flex; height: 2.25rem; width: 2.25rem; cursor: pointer; align-items: center; justify-content: center; border-radius: 0.5rem; color: var(--color-gray-500); transition: background-color 150ms, color 150ms; }
+.vista-botones button:hover { color: var(--color-gray-700); }
+.vista-botones button[aria-pressed='true'] { background: #fff; color: var(--color-gray-900); box-shadow: var(--shadow-theme-xs); }
+.vista-botones button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--color-gray-300); }
+
+/* Cuadrícula de productos: fotos grandes. */
+.grilla-productos { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 1rem; padding: 1rem; }
+@media (min-width: 640px) { .grilla-productos { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); padding: 1.25rem; } }
+.grilla-productos[hidden] { display: none; }
+
+/* Cuadrícula de categorías: la misma lista, con cada categoría como tarjeta vertical y la foto grande. */
+[data-vista-actual='grilla'] .lista-categorias { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 1rem; padding: 0 1rem 1rem; }
+@media (min-width: 640px) { [data-vista-actual='grilla'] .lista-categorias { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); padding: 0 1.25rem 1.25rem; } }
+[data-vista-actual='grilla'] .lista-categorias > li { border: 1px solid var(--color-gray-200) !important; border-radius: 0.75rem; overflow: hidden; }
+[data-vista-actual='grilla'] .lista-categorias > li[hidden] { display: none; }
+[data-vista-actual='grilla'] .lista-categorias .categoria-fila.categoria-fila { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0.75rem; padding: 0.75rem; }
+[data-vista-actual='grilla'] .lista-categorias .categoria-miniatura.categoria-miniatura { width: 100%; height: auto; aspect-ratio: 3 / 4; }
+[data-vista-actual='grilla'] .lista-categorias .categoria-acciones.categoria-acciones { width: 100%; padding-top: 0; border-top: 0; }
+[data-vista-actual='grilla'] .lista-categorias .categoria-acciones .btn { flex: 1; }

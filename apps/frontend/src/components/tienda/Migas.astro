@@ -3,10 +3,11 @@
 import { jsonLd } from '../../lib/formato';
 
 interface Props {
+  conInicio?: boolean;
   items: { texto: string; href?: string }[];
 }
-const { items } = Astro.props;
-const todos = [{ texto: 'Inicio', href: '/' }, ...items];
+const { items, conInicio = true } = Astro.props;
+const todos = conInicio ? [{ texto: 'Inicio', href: '/' }, ...items] : items;
 ---
 
 <nav aria-label="Migas de pan" class="text-suave text-[13px]">

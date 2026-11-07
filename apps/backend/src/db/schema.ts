@@ -121,6 +121,8 @@ export const imagen = sqliteTable("imagen", {
 	clave: text().notNull(),
 	orden: integer().default(0).notNull(),
 	textoAlternativo: text("texto_alternativo"),
+	original: text(),
+	encuadre: text(),
 },
 (table) => [
 	index("imagen_producto").on(table.productoId, table.orden),

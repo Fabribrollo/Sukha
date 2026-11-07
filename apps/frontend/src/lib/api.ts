@@ -51,3 +51,10 @@ export async function leerDelBorde<T>(request: Request, ruta: string, segundos: 
   await cache?.put(clave, respuesta).catch(() => {});
   return { datos, pedidoEn };
 }
+
+// Borra de la caché del borde (del centro de datos que atiende esta petición) las lecturas guardadas por leerDelBorde.
+// Se usa cuando el panel guarda algo que esas lecturas muestran, para que la tienda lo vea en la próxima carga.
+export async function purgarDelBorde(request: Request, rutas: string[]) {
+  const cache = typeof caches === 'undefined' ? null : caches.default;
+  await Promise.all(rutas.map((ruta) => cache?.delete(new Request(new URL(`/_cache${ruta}`, request.url))).catch(() => {})));
+}

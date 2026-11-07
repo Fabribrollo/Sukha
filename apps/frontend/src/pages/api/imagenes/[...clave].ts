@@ -13,6 +13,8 @@ export const GET: APIRoute = async ({ params, request }) => {
   const cacheada = await cache.match(claveCache);
   if (cacheada) return new Response(cacheada.body, cacheada);
 
+  // La foto original sin recortar es solo del panel (GET /api/admin/imagenes/:id/original): no se sirve acá.
+  if (params.clave!.endsWith('/original.webp')) return new Response('No encontrada', { status: 404 });
   let foto = await env.IMAGENES.getWithMetadata<{ tipo?: string }>(params.clave!, 'stream');
   // Las fotos de la portada subidas antes del 29/10/2026 no tienen tamaño mediano: va la grande.
   if (!foto.value && /^portada\/[a-z0-9-]+\/mediano\.webp$/.test(params.clave!)) foto = await env.IMAGENES.getWithMetadata<{ tipo?: string }>(params.clave!.replace(/mediano\.webp$/, 'grande.webp'), 'stream');

@@ -135,9 +135,29 @@ const config = await leer<Record<string, unknown>>(Astro.request, '/api/admin/co
 const logo = config.logo_clave ? `/api/imagenes/${config.logo_clave}/grande.webp` : null;
 const favicon = config.favicon_clave ? `/api/imagenes/${config.favicon_clave}/grande.webp` : null;
 const texto = (c: Campo_) => String(config[c.clave] ?? '');
+
+// Lo que falta completar, como notificaciones con link al campo (comercio, pagos, logo, WhatsApp, Instagram y email de contacto).
+const FALTANTES = [
+  ...['razon_social', 'cuit', 'condicion_fiscal', 'domicilio_comercial', 'horario_atencion', 'responsable_atencion', 'data_fiscal_url'].map((k) => ({ grupo: 'comercio', clave: k })),
+  ...['alias_transferencia', 'titular_transferencia'].map((k) => ({ grupo: 'pagos', clave: k })),
+  ...['whatsapp', 'instagram', 'email_contacto'].map((k) => ({ grupo: 'tienda', clave: k })),
+]
+  .filter((x) => !String(config[x.clave] ?? '').trim())
+  .map((x) => ({ ...x, etiqueta: GRUPOS.find((g) => g.id === x.grupo)!.campos.find((c) => c.clave === x.clave)!.etiqueta, seccion: GRUPOS.find((g) => g.id === x.grupo)!.corto }));
+if (!config.logo_clave) FALTANTES.push({ grupo: 'imagen', clave: '', etiqueta: 'Logo', seccion: 'Logo' });
 ---
 
 <Panel titulo="Configuración" error={error}>
+	{FALTANTES.length > 0 && (
+		<section aria-label="Falta completar" class="mb-5 rounded-2xl border border-warning-100 bg-warning-50 p-4">
+			<h2 class="mb-2 flex items-center gap-2 text-sm font-medium text-warning-700"><Bell class="size-4" aria-hidden="true" />Falta completar ({FALTANTES.length})</h2>
+			<ul class="flex flex-wrap gap-2">
+				{FALTANTES.map((x) => (
+					<li><a href={`#${x.grupo}`} data-falta={x.clave} class="text-theme-xs inline-flex items-center gap-1.5 rounded-full border border-warning-100 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-warning-50"><span class="text-gray-400">{x.seccion} ·</span>{x.etiqueta}</a></li>
+				))}
+			</ul>
+		</section>
+	)}
 	<div class="grid grid-cols-1 gap-5 lg:grid-cols-[12rem_minmax(0,1fr)]">
 		<Pestanas etiqueta="Secciones de la configuración" pestanas={PESTANAS} inicial={inicial} lateral />
 		<div class="min-w-0">
@@ -208,6 +228,11 @@ const texto = (c: Campo_) => String(config[c.clave] ?? '');
 	<BarraGuardado />
 </Panel>
 <script src="../../scripts/fotos.ts"></script>
+<script>
+	// Cada notificación lleva a su sección y deja el cursor en el campo que falta.
+	for (const a of document.querySelectorAll<HTMLAnchorElement>('a[data-falta]'))
+		a.addEventListener('click', () => setTimeout(() => a.dataset.falta && document.querySelector<HTMLInputElement>(`[name="${a.dataset.falta}"]`)?.focus(), 50));
+</script>
 <script>
 	// La cantidad de cuotas solo se puede tocar con las cuotas sin interés activadas.
 	const activar = document.querySelector<HTMLInputElement>('input[name=cuotas_sin_interes]');

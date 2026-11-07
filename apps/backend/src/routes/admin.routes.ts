@@ -38,6 +38,9 @@ adminRoutes.post('/envios/precios/aplicar', catalogo.aplicarPrecios);
 adminRoutes.get('/cabecera', catalogo.verCabecera);
 adminRoutes.put('/cabecera', catalogo.guardarCabecera);
 adminRoutes.delete('/cabecera', catalogo.restaurarCabecera);
+adminRoutes.put('/cabecera/borrador', catalogo.guardarBorradorCabecera);
+adminRoutes.delete('/cabecera/borrador', catalogo.descartarBorradorCabecera);
+adminRoutes.post('/cabecera/publicar', catalogo.publicarCabecera);
 adminRoutes.get('/portada', catalogo.verPortadas);
 adminRoutes.put('/portada/borrador', catalogo.guardarBorradorPortada);
 adminRoutes.post('/portada/imagen', catalogo.subirImagenDePortada);
@@ -69,9 +72,12 @@ adminRoutes.post('/productos/:id/variantes', catalogo.crearVariante);
 adminRoutes.post('/productos/:id/imagenes', catalogo.subirFoto);
 adminRoutes.put('/productos/:id/imagenes/orden', catalogo.ordenarFotos);
 adminRoutes.patch('/variantes/:id', catalogo.editarVariante);
+adminRoutes.delete('/variantes/:id', catalogo.borrarVariante);
 adminRoutes.post('/variantes/:id/stock', catalogo.moverStock);
 adminRoutes.get('/variantes/:id/movimientos', catalogo.movimientosDeVariante);
 adminRoutes.patch('/imagenes/:id', catalogo.editarFoto);
+adminRoutes.put('/imagenes/:id/archivos', catalogo.reencuadrarFoto);
+adminRoutes.get('/imagenes/:id/original', catalogo.originalDeFoto);
 adminRoutes.delete('/imagenes/:id', catalogo.eliminarFoto);
 
 // Redirecciones

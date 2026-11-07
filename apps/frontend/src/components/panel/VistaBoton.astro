@@ -1,0 +1,10 @@
+---
+// Botón para cambiar entre vista de lista y de cuadrícula. Va dentro de un contenedor con `data-vista="<clave>"`;
+// `scripts/vista.ts` recuerda la elección en este navegador.
+import { LayoutGrid, List } from '@lucide/astro';
+---
+
+<div class="vista-botones" role="group" aria-label="Cambiar vista">
+	<button type="button" data-vista-boton="lista" aria-pressed="true" title="Vista de lista" aria-label="Vista de lista"><List class="size-4" aria-hidden="true" /></button>
+	<button type="button" data-vista-boton="grilla" aria-pressed="false" title="Vista de cuadrícula" aria-label="Vista de cuadrícula"><LayoutGrid class="size-4" aria-hidden="true" /></button>
+</div>

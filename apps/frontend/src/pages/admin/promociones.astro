@@ -1,4 +1,5 @@
 ---
+import DescuentosNav from '../../components/panel/DescuentosNav.astro';
 import { CalendarClock, Gift, Layers, Pause, Pencil, Percent, Plus, Save, Tag, X } from '@lucide/astro';
 import Campo from '../../components/panel/Campo.astro';
 import Insignia from '../../components/panel/Insignia.astro';
@@ -10,6 +11,7 @@ import { api, leer } from '../../lib/api';
 import { deCampoFecha, dia, entero, errorDe, marcado, paraCampoFecha, txt } from '../../lib/panel';
 
 export const prerender = false;
+if (Astro.url.searchParams.get('tipo') === 'cupones') return Astro.rewrite('/admin/cupones' + (Astro.url.searchParams.has('ok') ? '?ok' : ''));
 
 let error = '';
 let altaFallida = false;
@@ -48,8 +50,9 @@ const estado = (p: any) => (!p.activa ? 'pausada' : p.hasta && p.hasta <= ahora 
 const titulo = (p: any) => (p.tipo === 'liquidacion' ? `${p.porcentaje}% de descuento` : p.tipo === '2x1' ? '2x1: llevando 2 pagás 1' : '3x2: llevando 3 pagás 2');
 ---
 
-<Panel titulo="Promociones" error={error}>
-	<button slot="acciones" type="button" data-alta="alta-promocion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva</button>
+<Panel titulo="Promociones y cupones" error={error}>
+ <DescuentosNav cupones={false} />
+	<button slot="acciones" type="button" data-alta="alta-promocion" class="btn btn-primario"><Plus class="size-4" aria-hidden="true" />Nueva promoción</button>
 
 	{promociones.length === 0 && <Tarjeta alRas><Vacio texto="Todavía no hay promociones"><Tag aria-hidden="true" /></Vacio></Tarjeta>}
 

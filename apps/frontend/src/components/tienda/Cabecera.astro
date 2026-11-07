@@ -55,16 +55,16 @@ const fila = 'flex min-h-[60px] items-center justify-between border-b border-lin
 				{deCelular.map((e) => (
 					<li>
 						{conPanel(e) ? (
-							<button type="button" data-ir={clave(e)} class={`${fila} cursor-pointer text-left`}>{e.texto}<ChevronRight class="size-[18px]" aria-hidden="true" /></button>
+							<button type="button" data-ir={clave(e)} data-eid={e.id} class={`${fila} cursor-pointer text-left`}>{e.texto}<ChevronRight class="size-[18px]" aria-hidden="true" /></button>
 						) : (
-							<a href={e.href} class={fila}>{e.texto}</a>
+							<a href={e.href} data-eid={e.id} class={fila}>{e.texto}</a>
 						)}
 					</li>
 				))}
 			</ul>
 		</nav>
 		{menu.tarjetasMovil.length > 0 && (
-			<div class="grid grid-cols-2 gap-2.5 px-5 pt-7">
+			<div data-eid="movil" class="grid grid-cols-2 gap-2.5 px-5 pt-7">
 				{menu.tarjetasMovil.map((h) => (
 					<a href={h.href} class="flex flex-col gap-2.5">
 						<span class="bg-arena block h-[200px] overflow-hidden">{h.imagen && <img src={foto(h.imagen)} alt="" loading="lazy" class="size-full object-cover" />}</span>
@@ -128,9 +128,9 @@ const fila = 'flex min-h-[60px] items-center justify-between border-b border-lin
 			<label for="menu-t" class="boton-icono md:hidden" title="Abrir menú"><Menu class="size-6" aria-hidden="true" /></label>
 			<nav class="hidden h-full gap-7 md:flex" aria-label="Menú principal">
 				{deEscritorio.map((e) => conPanel(e) ? (
-					<a href={e.href} data-menu-abre={clave(e)} aria-expanded="false" class:list={[enlace, subrayadoAbierto, actual(e.href) && subrayado]} aria-current={actual(e.href) ? 'page' : undefined}>{e.texto}</a>
+					<a href={e.href} data-eid={e.id} data-menu-abre={clave(e)} aria-expanded="false" class:list={[enlace, subrayadoAbierto, actual(e.href) && subrayado]} aria-current={actual(e.href) ? 'page' : undefined}>{e.texto}</a>
 				) : (
-					<a href={e.href} data-menu-sin-panel class:list={[enlace, actual(e.href) && subrayado]} aria-current={actual(e.href) ? 'page' : undefined}>{e.texto}</a>
+					<a href={e.href} data-eid={e.id} data-menu-sin-panel class:list={[enlace, actual(e.href) && subrayado]} aria-current={actual(e.href) ? 'page' : undefined}>{e.texto}</a>
 				))}
 			</nav>
 		</div>
@@ -147,7 +147,7 @@ const fila = 'flex min-h-[60px] items-center justify-between border-b border-lin
 	<!-- Paneles de escritorio: se abren debajo de la cabecera, con el resto de la página atenuado. -->
 	<div data-menu-fondo hidden aria-hidden="true" class="pointer-events-none absolute top-full left-0 -z-10 h-screen w-full bg-[rgb(30_28_25/0.35)] max-md:hidden"></div>
 	{deEscritorio.filter(conPanel).map((e) => e.tipo === 'colecciones' ? (
-		<div data-panel={clave(e)} hidden class="border-linea bg-fondo absolute top-full left-0 w-full border-y max-md:hidden">
+		<div data-panel={clave(e)} data-eid={e.id} hidden class="border-linea bg-fondo absolute top-full left-0 w-full border-y max-md:hidden">
 			<div class="mx-auto max-w-[1440px] px-14 pt-10 pb-12">
 				<div class="mb-6 flex items-baseline justify-between"><span class="text-suave text-[13px]">{e.texto}</span><a href={e.href} class={`text-sm ${subrayado}`}>Ver todas</a></div>
 				<ul class="grid grid-cols-4 gap-6">
@@ -163,7 +163,7 @@ const fila = 'flex min-h-[60px] items-center justify-between border-b border-lin
 			</div>
 		</div>
 	) : (
-		<div data-panel={clave(e)} hidden class="border-linea bg-fondo absolute top-full left-0 w-full border-y max-md:hidden">
+		<div data-panel={clave(e)} data-eid={e.id} hidden class="border-linea bg-fondo absolute top-full left-0 w-full border-y max-md:hidden">
 			<div class="mx-auto grid max-w-[1440px] grid-cols-[1fr_1fr_1fr_1.1fr_1.1fr] gap-12 px-14 pt-12 pb-14">
 				<div class="flex flex-col gap-3.5">
 					<a href={e.href} class="text-suave text-[13px]">{e.texto}</a>

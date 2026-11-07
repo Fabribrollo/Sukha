@@ -5,7 +5,12 @@ import 'cropperjs/dist/cropper.css';
 
 const PROPORCIONES: [string, number][] = [['Libre', NaN], ['Cuadrada', 1], ['Vertical', 4 / 5], ['Horizontal', 16 / 9]];
 
-export function recortar(archivo: File, opciones: { aspecto?: number; avance?: string } = {}): Promise<File | null> {
+export type Encuadre = { x: number; y: number; ancho: number; alto: number };
+
+// Igual que `recortar`, pero también devuelve el encuadre elegido (proporciones de la imagen, entre 0 y 1) y acepta uno inicial.
+export const recortar = async (archivo: File, opciones: { aspecto?: number; avance?: string } = {}) => (await recortarConEncuadre(archivo, opciones))?.archivo ?? null;
+
+export function recortarConEncuadre(archivo: File, opciones: { aspecto?: number; avance?: string; encuadre?: Encuadre | null } = {}): Promise<{ archivo: File; encuadre: Encuadre } | null> {
   return new Promise((listo) => {
     const url = URL.createObjectURL(archivo);
     const ventana = document.createElement('dialog');
@@ -25,14 +30,15 @@ export function recortar(archivo: File, opciones: { aspecto?: number; avance?: s
     document.body.append(ventana);
     const img = ventana.querySelector('img')!;
     let cropper: Cropper | undefined;
-    const cerrar = (resultado: File | null) => {
+    const cerrar = (resultado: { archivo: File; encuadre: Encuadre } | null) => {
       cropper?.destroy();
       URL.revokeObjectURL(url);
       ventana.remove();
       listo(resultado);
     };
     img.addEventListener('load', () => {
-      cropper = new Cropper(img, { viewMode: 1, autoCropArea: 1, aspectRatio: opciones.aspecto ?? NaN, background: false, responsive: true });
+      const e = opciones.encuadre;
+      cropper = new Cropper(img, { viewMode: 1, autoCropArea: 1, aspectRatio: opciones.aspecto ?? NaN, background: false, responsive: true, ...(e ? { data: { x: e.x * img.naturalWidth, y: e.y * img.naturalHeight, width: e.ancho * img.naturalWidth, height: e.alto * img.naturalHeight } } : {}) });
     }, { once: true });
     for (const b of ventana.querySelectorAll<HTMLButtonElement>('[data-prop]'))
       b.addEventListener('click', () => {
@@ -41,11 +47,16 @@ export function recortar(archivo: File, opciones: { aspecto?: number; avance?: s
       });
     ventana.querySelector('[data-cancelar]')!.addEventListener('click', () => cerrar(null));
     ventana.addEventListener('cancel', (e) => (e.preventDefault(), cerrar(null))); // Esc
-    ventana.querySelector('[data-completa]')!.addEventListener('click', () => cerrar(archivo));
+    const TODA: Encuadre = { x: 0, y: 0, ancho: 1, alto: 1 };
+    ventana.querySelector('[data-completa]')!.addEventListener('click', () => cerrar({ archivo, encuadre: TODA }));
     ventana.querySelector('[data-aceptar]')!.addEventListener('click', () => {
       const lienzo = cropper?.getCroppedCanvas({ maxWidth: 4096, maxHeight: 4096, imageSmoothingQuality: 'high' });
-      if (!lienzo) return cerrar(archivo);
-      lienzo.toBlob((b) => cerrar(b ? new File([b], 'recorte.png', { type: 'image/png' }) : archivo), 'image/png');
+      if (!lienzo) return cerrar({ archivo, encuadre: TODA });
+      const d = cropper!.getData();
+      const { naturalWidth: nw, naturalHeight: nh } = cropper!.getImageData();
+      const c01 = (n: number) => Math.min(1, Math.max(0, n));
+      const encuadre: Encuadre = { x: c01(d.x / nw), y: c01(d.y / nh), ancho: c01(d.width / nw), alto: c01(d.height / nh) };
+      lienzo.toBlob((b) => cerrar(b ? { archivo: new File([b], 'recorte.png', { type: 'image/png' }), encuadre } : { archivo, encuadre: TODA }), 'image/png');
     });
     ventana.showModal();
   });

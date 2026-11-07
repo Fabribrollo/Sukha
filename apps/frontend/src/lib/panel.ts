@@ -91,7 +91,7 @@ export const foto = (clave: string | null | undefined, tamano = 'chico') => (cla
 export function categoriasParaElegir(categorias: { id: number; nombre: string; padreId: number | null }[]) {
   const principales = categorias.filter((c) => !c.padreId);
   return principales.flatMap((p) => [
-    { id: p.id, etiqueta: p.nombre },
-    ...categorias.filter((h) => h.padreId === p.id).map((h) => ({ id: h.id, etiqueta: `${p.nombre} › ${h.nombre}` })),
+    { id: p.id, etiqueta: p.nombre, corto: p.nombre, padreId: null as number | null },
+    ...categorias.filter((h) => h.padreId === p.id).map((h) => ({ id: h.id, etiqueta: `${p.nombre} › ${h.nombre}`, corto: h.nombre, padreId: p.id as number | null })),
   ]);
 }

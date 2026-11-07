@@ -20,19 +20,21 @@ export const prerender = false;
 
 const vistaPrevia = Astro.url.searchParams.has('vista-previa');
 // Dentro del editor del panel (iframe): cada sección lleva su marca para poder tocarla, y se carga el script del editor.
-const editor = vistaPrevia && Astro.url.searchParams.has('editor');
+const tipoEditor = vistaPrevia ? Astro.url.searchParams.get('editor') : null;
+const editor = tipoEditor !== null && tipoEditor !== 'cabecera';
+const editorCabecera = tipoEditor === 'cabecera';
 const NOMBRES: Record<string, string> = { hero: 'Hero Moda real', banda: 'Banda de color', carrusel: 'Banners', campana: 'Campaña', coleccion: 'Colección destacada', columnas: 'Columnas', local: 'El local', categorias: 'Categorías', productos: 'Productos', beneficios: 'Beneficios', texto: 'Texto', newsletter: 'Newsletter', separador: 'Separador' };
 type Seccion = { id: string; tipo: string; dispositivo?: 'todos' | 'escritorio' | 'celular'; verTodos?: boolean; boton2?: string; enlace2?: string; lat?: number | null; lng?: number | null; zoom?: number; etiquetaMapa?: string; categoria?: string; titulo?: string; parrafo?: string; columnas?: 2 | 3 | 4 | 6; imagen?: string; etiqueta?: string; boton?: string; enlace?: string; tono?: 'oscuro' | 'claro'; conFoto?: boolean; producto?: string; looks?: { imagen: string; descripcion?: string; categoria?: string; enlace?: string }[]; banners?: any[]; items?: any[]; productos?: TarjetaDeProducto[]; href?: string | null };
 type Portada = { secciones: Seccion[]; borrador: boolean };
 const [{ tienda }, portada] = await Promise.all([
   datosDeLaTienda(Astro.request),
-  vistaPrevia ? leer<Portada>(Astro.request, '/api/portada?borrador=1') : portadaPublicada<Portada>(Astro.request),
+  vistaPrevia && !editorCabecera ? leer<Portada>(Astro.request, '/api/portada?borrador=1') : portadaPublicada<Portada>(Astro.request),
 ]);
 ---
 
 <Tienda titulo="Sukhä" noindex={vistaPrevia} conNewsletter={portada.secciones.some((s) => s.tipo === 'newsletter')} superpuesta={portada.secciones[0]?.tipo === 'hero' && !(vistaPrevia && !editor)}>
 	{
-		vistaPrevia && !editor && (
+		vistaPrevia && !editor && !editorCabecera && (
 			<p class="bg-aviso-fondo text-aviso px-4 py-2 text-center text-sm font-medium" role="status">
 				Vista previa del borrador de la portada{portada.borrador ? '' : ' (no hay cambios sin publicar: es la portada actual)'}. Solo la ves vos.
 			</p>
@@ -87,4 +89,5 @@ const [{ tienda }, portada] = await Promise.all([
 		})
 	}
 	{editor && <script is:inline src="/editor-portada.js"></script>}
+	{editorCabecera && <script is:inline src="/editor-cabecera.js"></script>}
 </Tienda>

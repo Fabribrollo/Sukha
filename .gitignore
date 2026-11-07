@@ -14,11 +14,6 @@ worker-configuration.d.ts
 # respaldos de la base: tienen datos personales de clientas
 backups/
 
-# instrucciones de Claude
-CLAUDE.md
-CLAUDE.local.md
-AGENTS.md
-.claude/
 
 .DS_Store
 apps/frontend/public/_demo-datos.js
@@ -29,3 +24,9 @@ mangusco-export/
 .cache/
 quitafondos-local/.cache/
 mangusco-export/sin-fondo/
+
+# instrucciones de IA
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude/

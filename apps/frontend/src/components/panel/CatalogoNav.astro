@@ -1,0 +1,14 @@
+---
+import { Shirt, FolderTree, Sparkles } from '@lucide/astro';
+const { actual, detalle } = Astro.props;
+const enlaces = [['productos', 'Productos', Shirt], ['categorias', 'Categorías', FolderTree], ['colecciones', 'Colecciones', Sparkles]] as const;
+---
+<div class="catalogo-contexto">
+  <nav aria-label="Secciones del catálogo">
+    {enlaces.map(([ruta, nombre, Icono]) => <a href={`/admin/${ruta}`} aria-current={actual === ruta ? 'page' : undefined}><Icono class="size-4" aria-hidden="true" />{nombre}</a>)}
+  </nav>
+  <p>{detalle}</p>
+</div>
+<style>
+.catalogo-contexto{margin-bottom:4px}.catalogo-contexto nav{display:flex;gap:24px;border-bottom:1px solid #e4e7ec}.catalogo-contexto a{display:flex;align-items:center;gap:8px;padding:0 0 14px;color:#667085;font-size:14px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}.catalogo-contexto a[aria-current]{color:#3641f5;border-color:#465fff}.catalogo-contexto p{font-size:13px;color:#667085;margin-top:14px}.catalogo-contexto a:focus-visible{outline:2px solid #465fff;outline-offset:4px}@media(max-width:480px){.catalogo-contexto nav{gap:0;justify-content:space-between}.catalogo-contexto a{font-size:13px;gap:5px}}
+</style>

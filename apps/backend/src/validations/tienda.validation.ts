@@ -121,6 +121,8 @@ export const CONFIGURACION = {
   portada_borrador: Portada.nullable().default(null),
   // Menú de la cabecera (null = el que arma la tienda sola con las categorías y colecciones).
   cabecera: Cabecera.nullable().default(null),
+  // Cambios del menú sin publicar (el editor visual del panel los guarda solos acá).
+  cabecera_borrador: Cabecera.nullable().default(null),
   // Textos editados de las plantillas de email (por tipo); lo que no está usa el texto original.
   plantillas_email: z
     .record(z.string().max(40), z.object({ asunto: z.string().trim().max(150), texto: z.string().trim().min(1).max(3000) }))
